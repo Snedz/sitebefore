@@ -1,0 +1,223 @@
+---
+// Preview.astro — the single renderer for every SiteBefore preview page.
+// Input: a business profile object (see src/data/profile.json for the schema).
+// House rules baked in here:
+//  - The reviews section renders ONLY when profile.reviews is non-empty.
+//    No placeholder reviews, ever.
+//  - Prices come from the profile and nowhere else (one price source).
+//  - Book Now links straight out to the business's real booking system.
+//  - No external fonts, images, or scripts: the page renders offline and fast.
+const { profile, sample = false } = Astro.props;
+const p = profile;
+const hasReviews = Array.isArray(p.reviews) && p.reviews.length > 0;
+const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+const fullAddress = `${p.address.street}, ${p.address.city}, ${p.address.province} ${p.address.postalCode}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{sample ? 'SAMPLE — ' : ''}{p.businessName} — {p.address.city}</title>
+    <meta name="description" content={`${p.businessName} — ${p.tagline}. ${fullAddress}. Call ${p.phone}.`} />
+    <style>
+      :root {
+        --ink: #2e2226;
+        --plum: #5b2a3c;
+        --blush: #f6e8e4;
+        --cream: #fdf9f6;
+        --gold: #b98a2f;
+        --line: #e5d5cf;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--cream);
+        line-height: 1.55;
+      }
+      h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; font-weight: 600; }
+      a { color: var(--plum); }
+
+      .sample-banner {
+        background: #b3261e; color: #fff; text-align: center;
+        padding: 0.6rem 1rem; font-weight: 700; letter-spacing: 0.04em;
+      }
+      header.topbar {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: 0.7rem 1.1rem; background: var(--cream); border-bottom: 1px solid var(--line);
+      }
+      .topbar .brand { font-family: Georgia, serif; font-size: 1.05rem; color: var(--plum); }
+      .btn {
+        display: inline-block; background: var(--plum); color: #fff; text-decoration: none;
+        padding: 0.65rem 1.3rem; border-radius: 999px; font-weight: 600; white-space: nowrap;
+      }
+      .btn.gold { background: var(--gold); }
+      .btn.ghost { background: transparent; color: var(--plum); border: 2px solid var(--plum); }
+
+      .hero {
+        background: linear-gradient(135deg, var(--plum) 0%, #7a3b52 55%, var(--gold) 130%);
+        color: #fff; text-align: center; padding: 3.2rem 1.2rem 2.6rem;
+      }
+      .hero h1 { font-size: 2.1rem; line-height: 1.2; margin-bottom: 0.5rem; }
+      .hero .tagline { font-size: 1.1rem; opacity: 0.92; }
+      .hero .where { margin-top: 0.6rem; opacity: 0.85; }
+      .hero .ctas { margin-top: 1.6rem; display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; }
+      .hero .btn.ghost { color: #fff; border-color: #fff; }
+      .hero .booking-note { margin-top: 0.8rem; font-size: 0.85rem; opacity: 0.8; }
+
+      main { max-width: 880px; margin: 0 auto; padding: 0 1.1rem; }
+      section { padding: 2.2rem 0 0.4rem; }
+      section h2 {
+        color: var(--plum); font-size: 1.5rem; margin-bottom: 1rem;
+        border-bottom: 2px solid var(--line); padding-bottom: 0.4rem;
+      }
+      .cat { margin-bottom: 1.4rem; }
+      .cat h3 { color: var(--ink); font-size: 1.1rem; margin-bottom: 0.5rem; }
+      .item {
+        display: flex; align-items: baseline; gap: 0.6rem; padding: 0.32rem 0;
+      }
+      .item .dots { flex: 1; border-bottom: 1px dotted #c9a89f; transform: translateY(-4px); }
+      .item .price { font-weight: 700; color: var(--plum); white-space: nowrap; }
+      .item .dur { color: #7a6a70; font-size: 0.9rem; white-space: nowrap; }
+
+      .packages { display: grid; gap: 0.8rem; grid-template-columns: 1fr; }
+      @media (min-width: 640px) { .packages { grid-template-columns: repeat(3, 1fr); } }
+      .pkg {
+        background: var(--blush); border: 1px solid var(--line); border-radius: 12px;
+        padding: 1rem; text-align: center;
+      }
+      .pkg .pkg-name { font-weight: 600; }
+      .pkg .pkg-price { font-family: Georgia, serif; font-size: 1.4rem; color: var(--plum); margin-top: 0.3rem; }
+
+      .review {
+        background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--gold);
+        border-radius: 8px; padding: 1rem 1.1rem; margin-bottom: 0.9rem;
+      }
+      .review .stars { color: var(--gold); letter-spacing: 0.15em; }
+      .review blockquote { margin: 0.4rem 0; font-style: italic; }
+      .review .who { font-size: 0.9rem; color: #7a6a70; }
+      .sample-tag {
+        display: inline-block; background: #b3261e; color: #fff; font-style: normal;
+        font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 4px;
+        vertical-align: middle; margin-right: 0.4rem; letter-spacing: 0.05em;
+      }
+
+      .visit { display: grid; gap: 1.4rem; grid-template-columns: 1fr; }
+      @media (min-width: 640px) { .visit { grid-template-columns: 1fr 1fr; } }
+      .hours-row { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+      .hours-row:last-child { border-bottom: none; }
+      address { font-style: normal; }
+      .big-phone { font-size: 1.25rem; font-weight: 700; }
+
+      footer {
+        margin-top: 2.6rem; background: var(--plum); color: #f3e3dc; text-align: center;
+        padding: 1.6rem 1.1rem; font-size: 0.92rem;
+      }
+      footer .fname { font-family: Georgia, serif; font-size: 1.05rem; color: #fff; }
+    </style>
+  </head>
+  <body>
+    {sample && (
+      <div class="sample-banner">SAMPLE PAGE — fictional business and sample reviews, for layout demonstration only</div>
+    )}
+
+    <header class="topbar">
+      <span class="brand">{p.businessName}</span>
+      <a class="btn" href={p.bookingUrl} target="_blank" rel="noopener">{p.bookingLabel}</a>
+    </header>
+
+    <div class="hero">
+      <h1>{p.businessName}</h1>
+      <p class="tagline">{p.tagline}</p>
+      <p class="where">{fullAddress}</p>
+      <div class="ctas">
+        <a class="btn gold" href={p.bookingUrl} target="_blank" rel="noopener">{p.bookingLabel}</a>
+        <a class="btn ghost" href={p.phoneHref}>Call {p.phone}</a>
+      </div>
+      <p class="booking-note">Online booking opens our booking page in a new tab.</p>
+    </div>
+
+    <main>
+      <section id="services">
+        <h2>Services &amp; Prices</h2>
+        {p.services.map((group) => (
+          <div class="cat">
+            <h3>{group.category}</h3>
+            {group.items.map((item) => (
+              <div class="item">
+                <span class="name">{item.name}</span>
+                {item.duration && <span class="dur">{item.duration}</span>}
+                <span class="dots"></span>
+                <span class="price">{item.price}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        <p style="font-size:0.88rem;color:#7a6a70;">{p.pricesNote}</p>
+      </section>
+
+      {p.packages && p.packages.length > 0 && (
+        <section id="packages">
+          <h2>Packages</h2>
+          <div class="packages">
+            {p.packages.map((pkg) => (
+              <div class="pkg">
+                <div class="pkg-name">{pkg.name}</div>
+                <div class="pkg-price">{pkg.price}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hasReviews && (
+        <section id="reviews">
+          <h2>What Customers Say</h2>
+          {p.reviews.map((r) => (
+            <div class="review">
+              <span class="stars" aria-label={`${r.rating} out of 5 stars`}>{stars(r.rating)}</span>
+              <blockquote>
+                {r.sample && <span class="sample-tag">SAMPLE</span>}
+                {r.text}
+              </blockquote>
+              <p class="who">— {r.author}{r.source ? ` · ${r.source}` : ''}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section id="visit">
+        <h2>Visit Us</h2>
+        <div class="visit">
+          <div>
+            <h3 style="margin-bottom:0.5rem;">Hours</h3>
+            {p.hours.map((h) => (
+              <div class="hours-row"><span>{h.days}</span><span>{h.time}</span></div>
+            ))}
+          </div>
+          <div>
+            <h3 style="margin-bottom:0.5rem;">Find Us</h3>
+            <address>
+              {p.address.street}<br />
+              {p.address.city}, {p.address.province} {p.address.postalCode}
+            </address>
+            <p style="margin-top:0.8rem;">
+              <a class="big-phone" href={p.phoneHref}>{p.phone}</a>
+            </p>
+            <p style="margin-top:0.6rem;">
+              <a class="btn" href={p.bookingUrl} target="_blank" rel="noopener">{p.bookingLabel}</a>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p class="fname">{p.businessName}</p>
+      <p>{fullAddress} · {p.phone}</p>
+    </footer>
+  </body>
+</html>

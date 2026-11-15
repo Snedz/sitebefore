@@ -1,0 +1,1 @@
+{"dependencies":{"astro":"^5.13.5"},"description":"SiteBefore preview generator: business profile JSON in, polished one-page preview site out.","name":"sitebefore-preview","private":true,"scripts":{"build":"astro build","dev":"astro dev","preview":"astro preview"},"type":"module","version":"0.1.0"}

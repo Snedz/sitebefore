@@ -1,0 +1,100 @@
+{
+  "brand": "SiteBefore",
+  "entryBuild": {
+    "name": "The Website",
+    "priceSlot": "[FOUNDER PRICE \u2014 website build, one-time]",
+    "text": "The entry build: a fast one-page site with your real services, one price list, your booking link one tap away, and your real reviews on the surface. Quoted fixed before work starts."
+  },
+  "headline": "Your website, booking and reviews \u2014 run like a front office, not a side project.",
+  "howItWorks": [
+    {
+      "step": "1. We look",
+      "text": "We audit your current site \u2014 booking path, prices, reviews, mobile speed \u2014 and show you the findings in plain English."
+    },
+    {
+      "step": "2. You preview",
+      "text": "You get a labelled preview of your redesigned page before you pay for anything. Previews are marked as concepts until they are your live site."
+    },
+    {
+      "step": "3. You approve",
+      "text": "A person approves everything that leaves the office. Nothing is sent, posted or published without a human yes."
+    },
+    {
+      "step": "4. It runs weekly",
+      "text": "The roles below do the recurring work every week, and you get one report on what each one actually produced."
+    }
+  ],
+  "intakeEndpoint": "https://docs.google.com/forms/d/e/1FAIpQLSeFQsq2X8U2v7fVFmRrP_YqNiEPvYJfGp4nGn_L9kaPAAY6MA/viewform",
+  "intakeNote": "FOUNDER: replace FOUNDER-FORM-ID with the real form endpoint before deploy (see monday-launch-plan-2026-11-01.md \u00a71). Until then this form does not deliver anywhere.",
+  "pilotNote": "SiteBefore is built in Toronto and is currently in pilot: a Niagara Falls salon redesign built around a shorter path to a booked chair, one price list, and real reviews on the surface. No results are claimed for the pilot \u2014 it is in progress.",
+  "pricingPlaceholder": "Pricing is set on a short call, and your quote is fixed before any work starts \u2014 the quote is the price, and changes are quoted before they are done, never after.",
+  "roles": [
+    {
+      "name": "The Front Desk",
+      "outcome": "No enquiry sits unanswered overnight.",
+      "priceSlot": "[FOUNDER PRICE \u2014 Front Desk, monthly]",
+      "workflows": [
+        "Answers the site chat and missed calls by text \u2014 and says it is automated when a customer interacts with it",
+        "Books into the booking flow you already use (e.g. LimeOrder)",
+        "Sends confirmations and reminders"
+      ]
+    },
+    {
+      "name": "The Reputation Manager",
+      "outcome": "Every job you finish starts ranking for the next one.",
+      "priceSlot": "[FOUNDER PRICE \u2014 Reputation Manager, monthly]",
+      "workflows": [
+        "Asks every finished client for a review at the moment of completion \u2014 the same ask for everyone, never gated",
+        "Publishes service \u00d7 neighbourhood pages from real completed work",
+        "Keeps your listings (hours, phone) consistent everywhere"
+      ]
+    },
+    {
+      "name": "The Marketer",
+      "outcome": "You see what each campaign actually produced.",
+      "priceSlot": "[FOUNDER PRICE \u2014 Marketer, monthly]",
+      "workflows": [
+        "Runs the offers and ads you approve \u2014 nothing runs unapproved",
+        "Writes the monthly local pages",
+        "Reports what each campaign produced, in numbers"
+      ]
+    },
+    {
+      "name": "The Office Manager (whole office)",
+      "outcome": "One office, one report, one point of contact.",
+      "priceSlot": "[FOUNDER PRICE \u2014 whole office, monthly]",
+      "workflows": [
+        "All of the above, run as one office",
+        "The roles cover for each other",
+        "One monthly report instead of three"
+      ]
+    }
+  ],
+  "subhead": "SiteBefore builds appointment businesses a website that books, then runs the weekly work behind it: enquiries answered, reviews collected, pages published. You approve everything before it goes out.",
+  "trust": [
+    {
+      "line": "You own it.",
+      "text": "The site, the domain, the content, the reviews \u2014 registered to your business, exportable any time."
+    },
+    {
+      "line": "Fixed price before work starts.",
+      "text": "The quote is the price; changes are quoted before they are done, never after."
+    },
+    {
+      "line": "Our AI says it's AI.",
+      "text": "Any automated receptionist or chat identifies itself as automated when a customer interacts with it."
+    },
+    {
+      "line": "Your client data stays in your systems.",
+      "text": "We work inside the tools you already use; we do not pool or resell customer data."
+    },
+    {
+      "line": "Previews are labelled previews.",
+      "text": "Every mockup we show is marked as a concept until it is your live site."
+    },
+    {
+      "line": "A person approves everything that leaves the office.",
+      "text": "Outreach and changes are drafted by the system and approved by a human before they send."
+    }
+  ]
+}
