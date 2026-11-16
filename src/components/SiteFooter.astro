@@ -1,0 +1,13 @@
+---
+// SiteFooter.astro — CASL sender identification on every public page.
+const { operator } = Astro.props;
+---
+<footer>
+  <p class="fname">SiteBefore</p>
+  <p>See your new website before you pay. Built in Toronto.</p>
+  <p class="casl">
+    SiteBefore is operated by {operator.legal}. Person responsible: {operator.responsible}.<br />
+    Mailing address: {operator.address}<br />
+    Contact or stop emails anytime: <a href="/unsubscribe/">sitebefore.com/unsubscribe</a>
+  </p>
+</footer>

@@ -1,0 +1,67 @@
+---
+// /unsubscribe — CASL unsubscribe and contact. Posts to the same intake form,
+// tagged UNSUBSCRIBE or CONTACT, so opt-outs land on the suppression list source.
+import SiteFooter from '../components/SiteFooter.astro';
+import offer from '../data/offer.json';
+const o = offer;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SiteBefore — Unsubscribe or contact</title>
+    <meta name="robots" content="noindex" />
+    <style is:global>
+      :root { --ink:#23272e; --navy:#17324a; --teal:#0e7a6d; --paper:#fbfaf7; --line:#ddd3c2; --muted:#6b7280; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--paper); line-height: 1.55; }
+      h1 { font-family: Georgia, serif; color: var(--navy); font-size: 1.7rem; margin-bottom: 0.6rem; }
+      main { max-width: 560px; margin: 0 auto; padding: 2.5rem 1.1rem; }
+      form { display: grid; gap: 0.8rem; margin-top: 1.2rem; }
+      label { font-weight: 600; display: grid; gap: 0.3rem; }
+      label.radio { display: flex; gap: 0.5rem; font-weight: 400; }
+      input[type=email], textarea { font: inherit; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+      .btn { background: var(--teal); color: #fff; border: none; padding: 0.65rem 1.3rem; border-radius: 999px; font-weight: 600; font-size: 1rem; cursor: pointer; justify-self: start; }
+      a { color: var(--teal); }
+      footer { margin-top: 2rem; background: var(--navy); color: #dbe7ee; text-align: center; padding: 1.7rem 1.1rem; font-size: 0.92rem; }
+      footer .fname { font-family: Georgia, serif; color: #fff; }
+      footer .casl { margin-top: 0.7rem; font-size: 0.85rem; }
+      footer a { color: #bfe6df; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">← SiteBefore</a></p>
+      <h1>Unsubscribe or contact us</h1>
+      <p>Enter the email we wrote to. Unsubscribes are honoured before any later email is sent.</p>
+      <form id="f">
+        <label>Email <input type="email" name="email" required /></label>
+        <label class="radio"><input type="radio" name="kind" value="UNSUBSCRIBE" checked /> Stop all emails from SiteBefore</label>
+        <label class="radio"><input type="radio" name="kind" value="CONTACT" /> Send a message instead</label>
+        <label>Message (optional) <textarea name="msg" rows="4"></textarea></label>
+        <button class="btn" type="submit">Send</button>
+      </form>
+      <p id="ok" hidden><strong>Done.</strong> We've recorded your request.</p>
+    </main>
+    <SiteFooter operator={o.operator} />
+    <script is:inline define:vars={{ intake: o.intake }}>
+      const form = document.getElementById('f');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const d = new FormData(form);
+        const email = (d.get('email') || '').toString().trim();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { alert('Please enter a valid email.'); return; }
+        const f = intake.fields;
+        const body = new URLSearchParams();
+        body.set(f.business, '-');
+        body.set(f.name, '-');
+        body.set(f.email, email);
+        body.set(f.notes, `${d.get('kind')} via sitebefore.com/unsubscribe at ${new Date().toISOString()}${d.get('msg') ? ' | message: ' + d.get('msg') : ''}`);
+        try { await fetch(intake.endpoint, { method: 'POST', mode: 'no-cors', body }); } catch (_) {}
+        form.hidden = true;
+        document.getElementById('ok').hidden = false;
+      });
+    </script>
+  </body>
+</html>
