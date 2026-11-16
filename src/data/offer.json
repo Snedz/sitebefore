@@ -1,30 +1,72 @@
 {
   "brand": "SiteBefore",
-  "headline": "See your new website before you pay a cent.",
-  "subhead": "Enter your website. We audit it automatically and build a free preview of your new site. If you like it, publish it online for one fixed price. No calls, no quotes, no sales pitch.",
+  "headline": "Paste your website. See a better one — free.",
+  "subhead": "We audit your current site and build a preview of your new one. Like it? Publish online for one fixed price. No calls, ever.",
   "currency": "CAD",
   "taxNote": "Prices in Canadian dollars, plus applicable tax.",
+  "urlCta": "See my new site free",
   "steps": [
-    { "n": "1", "title": "Enter your website", "text": "Type your business website and email. That's the whole sign-up." },
-    { "n": "2", "title": "Automatic audit", "text": "We check your current site: booking path, prices, mobile speed, contact details. Facts only, from what the check actually measured." },
-    { "n": "3", "title": "Free preview", "text": "You get a link to a preview of your new site, built from your real services, hours, address and phone. It's labelled a preview until you publish it." },
-    { "n": "4", "title": "Publish online", "text": "Like it? Pay the fixed price online and we publish it. Domain steps are sent to you by email." },
-    { "n": "5", "title": "Support by email", "text": "Questions and changes go by email. Automated replies say they're automated. Nobody will ask you to get on a call." }
+    {
+      "n": "1",
+      "title": "Paste your link",
+      "text": "Add your website (or skip if you do not have one yet). We use your real business info."
+    },
+    {
+      "n": "2",
+      "title": "Get audit + preview",
+      "text": "Automatic check of your site, then a link to a labelled preview of your new page — by email."
+    },
+    {
+      "n": "3",
+      "title": "Publish if you want",
+      "text": "Pay the fixed price online, we put it live and email domain steps. You own everything."
+    }
   ],
   "plans": [
-    { "id": "preview", "name": "Audit + preview", "price": "$0", "unit": "", "text": "See your new site before you pay. No card needed.", "cta": "Get my free preview" },
-    { "id": "publish", "name": "Publish the site", "price": "$599", "unit": "CAD, one-time", "text": "We take your preview live and email you the domain steps. You own the site.", "cta": "Publish — $599 CAD" },
-    { "id": "care", "name": "Care (optional)", "price": "$149", "unit": "CAD / month", "text": "Hosting, upkeep and changes by email. Cancel anytime from your billing email.", "cta": "Add Care — $149 CAD/mo" }
+    {
+      "id": "preview",
+      "name": "Audit + preview",
+      "price": "$0",
+      "unit": "",
+      "text": "See your new site before you pay. No card required.",
+      "cta": "Start free"
+    },
+    {
+      "id": "publish",
+      "name": "Publish",
+      "price": "$599",
+      "unit": "CAD, one-time",
+      "text": "Take your approved preview live. Domain setup instructions by email.",
+      "cta": "Publish — $599"
+    },
+    {
+      "id": "care",
+      "name": "Care",
+      "price": "$149",
+      "unit": "CAD / month",
+      "text": "Optional hosting, updates and changes by email. Cancel anytime.",
+      "cta": "Add Care"
+    }
   ],
-  "checkoutNote": "Online checkout opens soon. Start with your free preview below; when checkout is ready, the payment link appears on your preview page.",
-  "changesRule": "The price on the page is the price. Any change after purchase is priced on the page or by email before it's done, never after.",
-  "trust": [
-    { "line": "You own it.", "text": "The site, the domain and the content are registered to your business and exportable any time." },
-    { "line": "Fixed prices, published here.", "text": "No quotes, no calls, no surprise invoices." },
-    { "line": "Our AI says it's AI.", "text": "Any automated reply or chat tells you it's automated." },
-    { "line": "Your data stays yours.", "text": "We don't pool, sell or share your customers' data." },
-    { "line": "Previews are labelled previews.", "text": "Nothing is shown as your live site until you publish it." },
-    { "line": "No calls, ever.", "text": "Everything happens on this site and by email." }
+  "checkoutNote": "Stripe Checkout is wired on the preview page when you are ready to pay. Until then, we email you the payment link with your preview.",
+  "changesRule": "The price on this page is the price. Extra work is quoted by email before it is done.",
+  "faq": [
+    {
+      "q": "Will anyone call me?",
+      "a": "No. Everything is on this site, by email, or an AI chat that identifies itself as AI. We do not book calls."
+    },
+    {
+      "q": "Do I own the site?",
+      "a": "Yes. The site, domain and content are yours. You can export and leave anytime."
+    },
+    {
+      "q": "What happens after I pay?",
+      "a": "We publish your approved preview, email DNS and domain steps, and send receipts. Ongoing questions go by email."
+    },
+    {
+      "q": "Is the preview my real site?",
+      "a": "No. Previews are clearly labelled until you publish. Nothing pretends to be live without your yes."
+    }
   ],
   "intake": {
     "endpoint": "https://docs.google.com/forms/d/e/1FAIpQLSeFQsq2X8U2v7fVFmRrP_YqNiEPvYJfGp4nGn_L9kaPAAY6MA/formResponse",

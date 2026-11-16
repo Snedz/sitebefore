@@ -1,13 +1,5 @@
 ---
-// Offer.astro — the SiteBefore public page (sitebefore.com), no-call flow.
-// Spec: MissionWinning/67 VENTURES/site-to-sale/SPEC_LOCK.md (founder yes 2026-11-16 5:12 PM ET).
-// House rules baked in here:
-//  - No calls anywhere: no "book a call", no "pricing set on a call".
-//  - Prices are fixed and published (CAD, plus applicable tax).
-//  - Checkout is NOT wired yet: Publish/Care buttons record intent via the intake.
-//  - The intake posts URL + email to the existing Google Form (responses land in
-//    the founder's Google account). Visitors never see the form itself.
-//  - No testimonials, no client logos, no results claims.
+// Offer.astro — SiteBefore public landing (no-call flow).
 import SiteFooter from './SiteFooter.astro';
 const { offer } = Astro.props;
 const o = offer;
@@ -19,151 +11,587 @@ const o = offer;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SiteBefore — See your new website before you pay</title>
-    <meta name="description" content="Enter your website. Get an automatic audit and a free preview of your new site. Publish it online for $599 CAD, one-time. No calls." />
+    <meta name="description" content="Paste your website URL. Get a free audit and preview of your new site. Publish for $599 CAD one-time. No calls." />
     <style is:global>
-      :root { --ink:#23272e; --navy:#17324a; --teal:#0e7a6d; --paper:#fbfaf7; --sand:#f1eadf; --line:#ddd3c2; --muted:#6b7280; }
+      :root {
+        --bg: #f6f6f4;
+        --surface: #ffffff;
+        --ink: #121212;
+        --muted: #5c5c5c;
+        --line: #e3e3df;
+        --accent: #0b6e4f;
+        --accent-hover: #095c42;
+        --warn: #b45309;
+        --ok: #0b6e4f;
+        --bad: #c0392b;
+        --radius: 14px;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.06);
+      }
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--paper); line-height: 1.55; }
-      h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; font-weight: 600; color: var(--navy); }
-      a { color: var(--teal); }
-      header.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.7rem 1.1rem; background: var(--paper); border-bottom: 1px solid var(--line); }
-      .brand { font-family: Georgia, serif; font-size: 1.15rem; color: var(--navy); text-decoration: none; }
-      .btn { display: inline-block; background: var(--teal); color: #fff; text-decoration: none; padding: 0.65rem 1.3rem; border-radius: 999px; font-weight: 600; white-space: nowrap; border: none; cursor: pointer; font-size: 1rem; }
-      .btn.ghost { background: transparent; color: var(--teal); border: 2px solid var(--teal); }
-      .btn[disabled] { opacity: 0.6; cursor: wait; }
-      .hero { background: linear-gradient(135deg, var(--navy) 0%, #1f4a5e 60%, var(--teal) 130%); color: #fff; padding: 3.2rem 1.2rem 2.8rem; }
-      .hero-inner { max-width: 760px; margin: 0 auto; text-align: center; }
-      .hero h1 { color: #fff; font-size: 2.2rem; line-height: 1.2; margin-bottom: 0.7rem; }
-      .hero .sub { font-size: 1.08rem; opacity: 0.93; }
-      main { max-width: 920px; margin: 0 auto; padding: 0 1.1rem; }
-      section { padding: 2.3rem 0 0.4rem; }
-      section h2 { font-size: 1.55rem; margin-bottom: 1rem; border-bottom: 2px solid var(--line); padding-bottom: 0.4rem; }
-      .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; }
-      .steps { display: grid; gap: 0.9rem; grid-template-columns: 1fr; }
-      @media (min-width: 720px) { .steps { grid-template-columns: repeat(3, 1fr); } }
-      .step .n { font-weight: 700; color: var(--teal); }
-      .step h3 { font-size: 1.1rem; margin: 0.1rem 0 0.3rem; }
-      .plans { display: grid; gap: 0.9rem; grid-template-columns: 1fr; }
-      @media (min-width: 720px) { .plans { grid-template-columns: repeat(3, 1fr); } }
-      .plan { display: flex; flex-direction: column; gap: 0.5rem; }
-      .plan .price { font-family: Georgia, serif; font-size: 2rem; color: var(--navy); }
-      .plan .unit { font-size: 0.9rem; color: var(--muted); }
-      .plan p { flex: 1; }
-      .plan.featured { border: 2px solid var(--teal); }
-      .note { color: var(--muted); font-size: 0.93rem; margin-top: 0.8rem; }
-      .trust { display: grid; gap: 0.9rem; grid-template-columns: 1fr; }
-      @media (min-width: 720px) { .trust { grid-template-columns: repeat(2, 1fr); } }
-      .trust strong { color: var(--navy); display: block; margin-bottom: 0.25rem; }
-      form.intake { background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 1.25rem; display: grid; gap: 0.8rem; text-align: left; margin-top: 1.6rem; }
-      form.intake label { font-weight: 600; font-size: 0.95rem; display: grid; gap: 0.3rem; }
-      form.intake label.check { display: flex; gap: 0.5rem; align-items: flex-start; font-weight: 400; font-size: 0.9rem; }
-      form.intake input[type=text], form.intake input[type=url], form.intake input[type=email] { font: inherit; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-      .intent { background: var(--sand); border-radius: 8px; padding: 0.55rem 0.75rem; font-size: 0.93rem; }
-      .done { background: #fff; color: var(--ink); border-radius: 14px; padding: 1.4rem; margin-top: 1.6rem; text-align: left; }
-      .done h3 { margin-bottom: 0.4rem; }
-      .err { color: #9b1c1c; font-size: 0.93rem; }
-      footer { margin-top: 2.8rem; background: var(--navy); color: #dbe7ee; text-align: center; padding: 1.7rem 1.1rem; font-size: 0.92rem; }
-      footer .fname { font-family: Georgia, serif; font-size: 1.05rem; color: #fff; }
-      footer .casl { margin-top: 0.7rem; font-size: 0.85rem; opacity: 0.9; }
-      footer a { color: #bfe6df; }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent); }
+      a:focus-visible, button:focus-visible, input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .wrap { width: min(1120px, 100% - 2rem); margin: 0 auto; }
+
+      header.site-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(246, 246, 244, 0.92);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.85rem 0;
+      }
+      .brand {
+        font-weight: 700;
+        font-size: 1.05rem;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .nav-links {
+        display: none;
+        gap: 1.25rem;
+        font-size: 0.92rem;
+      }
+      .nav-links a { color: var(--muted); text-decoration: none; }
+      .nav-links a:hover { color: var(--ink); }
+      @media (min-width: 720px) { .nav-links { display: flex; } }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 999px;
+        padding: 0.7rem 1.25rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        text-decoration: none;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn:hover { background: var(--accent-hover); }
+      .btn.ghost {
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      .btn.ghost:hover { background: var(--surface); }
+      .btn[disabled] { opacity: 0.55; cursor: wait; }
+      .btn.sm { padding: 0.55rem 1rem; font-size: 0.88rem; }
+
+      .hero { padding: 2.5rem 0 3rem; }
+      .hero-grid {
+        display: grid;
+        gap: 2.5rem;
+        align-items: center;
+      }
+      @media (min-width: 960px) {
+        .hero-grid { grid-template-columns: 1fr 1.05fr; gap: 3rem; }
+      }
+      .eyebrow {
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.75rem;
+      }
+      .hero h1 {
+        font-size: clamp(2rem, 4.5vw, 3.1rem);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+        font-weight: 700;
+        margin-bottom: 0.85rem;
+      }
+      .hero .sub {
+        font-size: 1.12rem;
+        color: var(--muted);
+        max-width: 34rem;
+        margin-bottom: 1.5rem;
+      }
+      .url-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        max-width: 28rem;
+      }
+      @media (min-width: 520px) {
+        .url-bar { flex-direction: row; align-items: stretch; }
+      }
+      .url-bar input {
+        flex: 1;
+        font: inherit;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        min-width: 0;
+      }
+      .url-bar .btn { border-radius: 999px; }
+      .hero-hint {
+        margin-top: 0.65rem;
+        font-size: 0.86rem;
+        color: var(--muted);
+      }
+
+      .example-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.65rem;
+      }
+      .example-panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: calc(var(--radius) + 4px);
+        box-shadow: var(--shadow);
+        padding: 1rem;
+      }
+      .browser-chrome {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-bottom: 0.75rem;
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #ddd; }
+      .dot.r { background: #ff5f57; }
+      .dot.y { background: #febc2e; }
+      .dot.g { background: #28c840; }
+      .mock-url {
+        flex: 1;
+        font-size: 0.72rem;
+        color: var(--muted);
+        background: var(--bg);
+        border-radius: 6px;
+        padding: 0.35rem 0.55rem;
+        margin-left: 0.35rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ba-grid {
+        display: grid;
+        gap: 0.75rem;
+      }
+      @media (min-width: 520px) { .ba-grid { grid-template-columns: 1fr 1fr; } }
+      .mock-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.85rem;
+        font-size: 0.8rem;
+      }
+      .mock-card.before { background: #faf9f7; }
+      .mock-card.after { background: linear-gradient(180deg, #f0faf6 0%, #fff 100%); border-color: #b8e0d2; }
+      .mock-card h3 {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+      }
+      .score {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.25rem 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .score:last-child { border: none; }
+      .score .val.bad { color: var(--bad); font-weight: 600; }
+      .score .val.ok { color: var(--ok); font-weight: 600; }
+      .after-hero {
+        background: var(--accent);
+        color: #fff;
+        border-radius: 10px;
+        padding: 0.85rem;
+        margin-bottom: 0.55rem;
+        text-align: center;
+      }
+      .after-hero strong { display: block; font-size: 1rem; }
+      .after-hero span { font-size: 0.78rem; opacity: 0.92; }
+      .after-cta {
+        display: block;
+        text-align: center;
+        background: #fff;
+        color: var(--accent);
+        font-weight: 700;
+        padding: 0.45rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+      }
+
+      section.block { padding: 3rem 0; }
+      section.block.tight { padding: 2rem 0 3rem; }
+      .section-head {
+        margin-bottom: 1.5rem;
+        max-width: 36rem;
+      }
+      .section-head h2 {
+        font-size: clamp(1.45rem, 2.5vw, 1.85rem);
+        letter-spacing: -0.02em;
+        margin-bottom: 0.4rem;
+      }
+      .section-head p { color: var(--muted); }
+
+      .steps {
+        display: grid;
+        gap: 1rem;
+      }
+      @media (min-width: 800px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+      .step {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.15rem 1.2rem;
+      }
+      .step .n {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.06em;
+        margin-bottom: 0.35rem;
+      }
+      .step h3 { font-size: 1.05rem; margin-bottom: 0.35rem; }
+      .step p { font-size: 0.92rem; color: var(--muted); }
+
+      .plans {
+        display: grid;
+        gap: 1rem;
+      }
+      @media (min-width: 800px) { .plans { grid-template-columns: repeat(3, 1fr); } }
+      .plan {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.25rem 1.2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+      .plan.featured {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent);
+      }
+      .plan .name { font-weight: 700; font-size: 1.05rem; }
+      .plan .price {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+      .plan .unit { font-size: 0.88rem; color: var(--muted); margin-left: 0.25rem; font-weight: 500; }
+      .plan .desc { flex: 1; font-size: 0.92rem; color: var(--muted); margin: 0.25rem 0 0.5rem; }
+      .note { font-size: 0.88rem; color: var(--muted); margin-top: 1rem; max-width: 48rem; }
+
+      .faq {
+        display: grid;
+        gap: 0.65rem;
+        max-width: 40rem;
+      }
+      details {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.85rem 1rem;
+      }
+      summary {
+        font-weight: 600;
+        cursor: pointer;
+        list-style: none;
+      }
+      summary::-webkit-details-marker { display: none; }
+      details p {
+        margin-top: 0.55rem;
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .intake-section {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: calc(var(--radius) + 2px);
+        padding: 1.5rem 1.25rem;
+        box-shadow: var(--shadow);
+      }
+      @media (min-width: 640px) { .intake-section { padding: 2rem; } }
+      form.intake {
+        display: grid;
+        gap: 0.85rem;
+        max-width: 28rem;
+      }
+      form.intake label {
+        display: grid;
+        gap: 0.35rem;
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+      form.intake input {
+        font: inherit;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--bg);
+      }
+      label.check {
+        display: flex;
+        gap: 0.55rem;
+        align-items: flex-start;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      label.check input { margin-top: 0.2rem; }
+      .intent {
+        background: #f0faf6;
+        border: 1px solid #b8e0d2;
+        border-radius: 10px;
+        padding: 0.6rem 0.75rem;
+        font-size: 0.88rem;
+        color: var(--ink);
+      }
+      .done {
+        padding: 0.25rem 0;
+      }
+      .done h3 { margin-bottom: 0.5rem; }
+      .done p { color: var(--muted); }
+      .err { color: var(--bad); font-size: 0.88rem; }
+
+      footer.site-footer {
+        margin-top: 2rem;
+        border-top: 1px solid var(--line);
+        background: #111;
+        color: #cfcfcf;
+        padding: 2rem 0 2.5rem;
+        font-size: 0.88rem;
+      }
+      .footer-inner { text-align: center; }
+      .fname { color: #fff; font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }
+      .footer-tag { margin-bottom: 0.75rem; }
+      .casl { font-size: 0.82rem; line-height: 1.55; opacity: 0.9; }
+      footer.site-footer a { color: #9fd5c4; }
     </style>
   </head>
   <body>
-    <header class="topbar">
-      <a class="brand" href="/">SiteBefore</a>
-      <a class="btn" href="#start">See my new site</a>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="/">SiteBefore</a>
+        <nav class="nav-links" aria-label="Page sections">
+          <a href="#example">Example</a>
+          <a href="#how">How it works</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <a class="btn sm" href="#get-preview">{o.urlCta}</a>
+      </div>
     </header>
 
-    <div class="hero" id="start">
-      <div class="hero-inner">
-        <h1>{o.headline}</h1>
-        <p class="sub">{o.subhead}</p>
+    <div class="wrap hero">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">For salons, contractors &amp; local services</p>
+          <h1>{o.headline}</h1>
+          <p class="sub">{o.subhead}</p>
+          <div class="url-bar">
+            <label class="sr-only" for="hero-url">Your website URL</label>
+            <input id="hero-url" type="url" placeholder="Paste your website" inputmode="url" autocomplete="url" />
+            <button type="button" class="btn" id="hero-go">{o.urlCta}</button>
+          </div>
+          <p class="hero-hint">No site yet? Leave the box blank — we will start from your business name below.</p>
+        </div>
 
-        <form class="intake" id="intake" novalidate>
-          <label>Your business website
-            <input type="url" name="website" placeholder="https://yourbusiness.ca" inputmode="url" autocomplete="url" />
-          </label>
-          <label>Business name
-            <input type="text" name="business" required autocomplete="organization" />
-          </label>
-          <label>Email (where we send your audit and preview)
-            <input type="email" name="email" required autocomplete="email" />
-          </label>
-          <p class="intent" id="intent-line" hidden></p>
-          <label class="check">
-            <input type="checkbox" name="consent" required />
-            <span>Email me my audit, my preview, and messages about this order. I can unsubscribe anytime.</span>
-          </label>
-          <p class="err" id="intake-err" hidden></p>
-          <button class="btn" type="submit" id="intake-btn">Get my free preview</button>
-          <p class="note" style="margin-top:0">No card, no call. No website yet? Leave that box blank and we'll build from your business name.</p>
-        </form>
-
-        <div class="done" id="intake-done" hidden>
-          <h3>Got it. Your audit is in the queue.</h3>
-          <p>We'll email your audit and a link to your free preview to <strong id="done-email"></strong>. Everything after this happens by email. Nobody will call you.</p>
+        <div id="example">
+          <p class="example-label">Example — not a real client</p>
+          <div class="example-panel" aria-label="Example audit and preview">
+            <div class="browser-chrome" aria-hidden="true">
+              <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+              <span class="mock-url">sitebefore.com/example</span>
+            </div>
+            <h3 class="sr-only">Before and after</h3>
+            <div class="ba-grid">
+              <div class="mock-card before">
+                <h3>Audit snapshot</h3>
+                <div class="score"><span>Mobile speed</span><span class="val bad">Slow</span></div>
+                <div class="score"><span>Book button</span><span class="val bad">Buried</span></div>
+                <div class="score"><span>Price list</span><span class="val bad">PDF</span></div>
+                <div class="score"><span>Contact info</span><span class="val ok">Found</span></div>
+              </div>
+              <div class="mock-card after">
+                <h3>Preview page</h3>
+                <div class="after-hero">
+                  <strong>Harbour Nails Studio</strong>
+                  <span>Open today · Book in 2 taps</span>
+                </div>
+                <span class="after-cta">Book appointment</span>
+                <p style="margin-top:0.5rem;color:var(--muted);">Services &amp; prices on one screen · labelled preview</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <main>
-      <section id="how">
-        <h2>How it works</h2>
-        <div class="steps">
-          {o.steps.map((s) => (
-            <div class="card step">
-              <div class="n">{s.n}</div>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
-            </div>
-          ))}
+      <section class="block tight" id="how">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>How it works</h2>
+            <p>Three steps. Email only after that — no sales call.</p>
+          </div>
+          <div class="steps">
+            {o.steps.map((s) => (
+              <article class="step">
+                <div class="n">Step {s.n}</div>
+                <h3>{s.title}</h3>
+                <p>{s.text}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section id="pricing">
-        <h2>Prices</h2>
-        <div class="plans">
-          {o.plans.map((p) => (
-            <div class={`card plan${p.id === 'publish' ? ' featured' : ''}`}>
-              <h3>{p.name}</h3>
-              <div><span class="price">{p.price}</span> <span class="unit">{p.unit}</span></div>
-              <p>{p.text}</p>
-              <a class="btn" href="#start" data-intent={p.id}>{p.cta}</a>
-            </div>
-          ))}
+      <section class="block" id="pricing">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Pricing</h2>
+            <p>Published here. {o.taxNote}</p>
+          </div>
+          <div class="plans">
+            {o.plans.map((p) => (
+              <article class={`plan${p.id === 'publish' ? ' featured' : ''}`}>
+                <div class="name">{p.name}</div>
+                <div>
+                  <span class="price">{p.price}</span>
+                  {p.unit && <span class="unit">{p.unit}</span>}
+                </div>
+                <p class="desc">{p.text}</p>
+                <a class="btn ghost sm" href="#get-preview" data-intent={p.id}>{p.cta}</a>
+              </article>
+            ))}
+          </div>
+          <p class="note">{o.checkoutNote} {o.changesRule}</p>
         </div>
-        <p class="note">{o.taxNote} {o.changesRule}</p>
-        <p class="note">{o.checkoutNote}</p>
       </section>
 
-      <section id="trust">
-        <h2>How we work</h2>
-        <div class="trust">
-          {o.trust.map((t) => (
-            <div class="card">
-              <strong>{t.line}</strong>
-              <span>{t.text}</span>
+      <section class="block" id="faq">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>FAQ</h2>
+            <p>Quick answers before you paste your link.</p>
+          </div>
+          <div class="faq">
+            {o.faq.map((item) => (
+              <details>
+                <summary>{item.q}</summary>
+                <p>{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="block" id="get-preview">
+        <div class="wrap">
+          <div class="intake-section">
+            <div class="section-head">
+              <h2>Get your free preview</h2>
+              <p>We email your audit and preview link. Nobody will call you.</p>
             </div>
-          ))}
+
+            <form class="intake" id="intake" novalidate>
+              <label>Website (optional)
+                <input type="url" name="website" id="form-website" placeholder="https://yourbusiness.ca" inputmode="url" autocomplete="url" />
+              </label>
+              <label>Business name
+                <input type="text" name="business" required autocomplete="organization" />
+              </label>
+              <label>Email
+                <input type="email" name="email" required autocomplete="email" />
+              </label>
+              <p class="intent" id="intent-line" hidden></p>
+              <label class="check">
+                <input type="checkbox" name="consent" required />
+                <span>Email me my audit, preview, and messages about this order. I can unsubscribe anytime.</span>
+              </label>
+              <p class="err" id="intake-err" hidden></p>
+              <button class="btn" type="submit" id="intake-btn">Send my free preview</button>
+            </form>
+
+            <div class="done" id="intake-done" hidden>
+              <h3>You are in the queue.</h3>
+              <p>We will email your audit and preview link to <strong id="done-email"></strong>. Everything after this is by email.</p>
+            </div>
+          </div>
         </div>
       </section>
     </main>
 
     <SiteFooter operator={o.operator} />
 
+    <style>
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+
     <script is:inline define:vars={{ intake: o.intake, plans: o.plans }}>
+      const heroUrl = document.getElementById('hero-url');
+      const formWebsite = document.getElementById('form-website');
+      const heroGo = document.getElementById('hero-go');
       const form = document.getElementById('intake');
       const btn = document.getElementById('intake-btn');
       const err = document.getElementById('intake-err');
       const intentLine = document.getElementById('intent-line');
       let intent = 'preview';
 
+      function syncUrl(from, to) {
+        from.addEventListener('input', () => { to.value = from.value; });
+      }
+      syncUrl(heroUrl, formWebsite);
+      syncUrl(formWebsite, heroUrl);
+
+      heroGo.addEventListener('click', () => {
+        formWebsite.value = heroUrl.value;
+        document.getElementById('get-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const business = form.querySelector('[name=business]');
+        if (business && !business.value) business.focus();
+      });
+
       document.querySelectorAll('[data-intent]').forEach((a) => {
         a.addEventListener('click', () => {
           intent = a.dataset.intent;
           if (intent === 'preview') { intentLine.hidden = true; return; }
           const plan = plans.find((p) => p.id === intent);
-          intentLine.textContent = `You picked: ${plan.name} (${plan.price} ${plan.unit}). Online checkout opens soon, so we start with your free preview and email you the payment link with it.`;
+          intentLine.textContent = `You chose ${plan.name} (${plan.price} ${plan.unit || ''}). We start with your free preview and include the payment link in that email.`;
           intentLine.hidden = false;
         });
       });
@@ -189,7 +617,7 @@ const o = offer;
         body.set(f.email, email);
         if (website) body.set(f.website, website);
         body.set(f.interest, website ? 'Redo my current website' : 'A new website');
-        body.set(f.notes, `source=sitebefore.com no-call intake v2; intent=${intent}; casl_express_consent=yes at ${new Date().toISOString()}`);
+        body.set(f.notes, `source=sitebefore.com no-call intake v3; intent=${intent}; casl_express_consent=yes at ${new Date().toISOString()}`);
 
         btn.disabled = true; btn.textContent = 'Sending…';
         try {
@@ -200,7 +628,7 @@ const o = offer;
         } catch (_) {
           err.textContent = 'That did not go through. Check your connection and try again.';
           err.hidden = false;
-          btn.disabled = false; btn.textContent = 'Get my free preview';
+          btn.disabled = false; btn.textContent = 'Send my free preview';
         }
       });
     </script>
