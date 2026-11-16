@@ -1,0 +1,15 @@
+---
+// SiteFooter.astro — CASL sender identification on every public page.
+const { operator } = Astro.props;
+---
+<footer class="site-footer">
+  <div class="footer-inner">
+    <p class="fname">SiteBefore</p>
+    <p class="footer-tag">See your new website before you pay.</p>
+    <p class="casl">
+      Operated by {operator.legal}. Person responsible: {operator.responsible}.<br />
+      Mailing address: {operator.address}<br />
+      <a href="/unsubscribe/">Unsubscribe from emails</a>
+    </p>
+  </div>
+</footer>

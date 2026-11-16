@@ -1,100 +1,87 @@
 {
   "brand": "SiteBefore",
-  "entryBuild": {
-    "name": "The Website",
-    "priceSlot": "[FOUNDER PRICE \u2014 website build, one-time]",
-    "text": "The entry build: a fast one-page site with your real services, one price list, your booking link one tap away, and your real reviews on the surface. Quoted fixed before work starts."
+  "headline": "Paste your website. See a better one — free.",
+  "subhead": "We audit your current site and build a preview of your new one. Like it? Publish online for one fixed price. No calls, ever.",
+  "currency": "CAD",
+  "taxNote": "Prices in Canadian dollars, plus applicable tax.",
+  "urlCta": "See my new site free",
+  "steps": [
+    {
+      "n": "1",
+      "title": "Paste your link",
+      "text": "Add your website (or skip if you do not have one yet). We use your real business info."
+    },
+    {
+      "n": "2",
+      "title": "Get audit + preview",
+      "text": "Automatic check of your site, then a link to a labelled preview of your new page — by email."
+    },
+    {
+      "n": "3",
+      "title": "Publish if you want",
+      "text": "Pay the fixed price online, we put it live and email domain steps. You own everything."
+    }
+  ],
+  "plans": [
+    {
+      "id": "preview",
+      "name": "Audit + preview",
+      "price": "$0",
+      "unit": "",
+      "text": "See your new site before you pay. No card required.",
+      "cta": "Start free"
+    },
+    {
+      "id": "publish",
+      "name": "Publish",
+      "price": "$599",
+      "unit": "CAD, one-time",
+      "text": "Take your approved preview live. Domain setup instructions by email.",
+      "cta": "Publish — $599"
+    },
+    {
+      "id": "care",
+      "name": "Care",
+      "price": "$149",
+      "unit": "CAD / month",
+      "text": "Optional hosting, updates and changes by email. Cancel anytime.",
+      "cta": "Add Care"
+    }
+  ],
+  "checkoutNote": "Stripe Checkout is wired on the preview page when you are ready to pay. Until then, we email you the payment link with your preview.",
+  "changesRule": "The price on this page is the price. Extra work is quoted by email before it is done.",
+  "faq": [
+    {
+      "q": "Will anyone call me?",
+      "a": "No. Everything is on this site, by email, or an AI chat that identifies itself as AI. We do not book calls."
+    },
+    {
+      "q": "Do I own the site?",
+      "a": "Yes. The site, domain and content are yours. You can export and leave anytime."
+    },
+    {
+      "q": "What happens after I pay?",
+      "a": "We publish your approved preview, email DNS and domain steps, and send receipts. Ongoing questions go by email."
+    },
+    {
+      "q": "Is the preview my real site?",
+      "a": "No. Previews are clearly labelled until you publish. Nothing pretends to be live without your yes."
+    }
+  ],
+  "intake": {
+    "endpoint": "https://docs.google.com/forms/d/e/1FAIpQLSeFQsq2X8U2v7fVFmRrP_YqNiEPvYJfGp4nGn_L9kaPAAY6MA/formResponse",
+    "fields": {
+      "business": "entry.1315202704",
+      "name": "entry.1150973456",
+      "email": "entry.1825161755",
+      "website": "entry.646970501",
+      "interest": "entry.1697737806",
+      "notes": "entry.2035337332"
+    }
   },
-  "headline": "Your website, booking and reviews \u2014 run like a front office, not a side project.",
-  "howItWorks": [
-    {
-      "step": "1. We look",
-      "text": "We audit your current site \u2014 booking path, prices, reviews, mobile speed \u2014 and show you the findings in plain English."
-    },
-    {
-      "step": "2. You preview",
-      "text": "You get a labelled preview of your redesigned page before you pay for anything. Previews are marked as concepts until they are your live site."
-    },
-    {
-      "step": "3. You approve",
-      "text": "A person approves everything that leaves the office. Nothing is sent, posted or published without a human yes."
-    },
-    {
-      "step": "4. It runs weekly",
-      "text": "The roles below do the recurring work every week, and you get one report on what each one actually produced."
-    }
-  ],
-  "intakeEndpoint": "https://docs.google.com/forms/d/e/1FAIpQLSeFQsq2X8U2v7fVFmRrP_YqNiEPvYJfGp4nGn_L9kaPAAY6MA/viewform",
-  "intakeNote": "FOUNDER: replace FOUNDER-FORM-ID with the real form endpoint before deploy (see monday-launch-plan-2026-11-01.md \u00a71). Until then this form does not deliver anywhere.",
-  "pilotNote": "SiteBefore is built in Toronto and is currently in pilot: a Niagara Falls salon redesign built around a shorter path to a booked chair, one price list, and real reviews on the surface. No results are claimed for the pilot \u2014 it is in progress.",
-  "pricingPlaceholder": "Pricing is set on a short call, and your quote is fixed before any work starts \u2014 the quote is the price, and changes are quoted before they are done, never after.",
-  "roles": [
-    {
-      "name": "The Front Desk",
-      "outcome": "No enquiry sits unanswered overnight.",
-      "priceSlot": "[FOUNDER PRICE \u2014 Front Desk, monthly]",
-      "workflows": [
-        "Answers the site chat and missed calls by text \u2014 and says it is automated when a customer interacts with it",
-        "Books into the booking flow you already use (e.g. LimeOrder)",
-        "Sends confirmations and reminders"
-      ]
-    },
-    {
-      "name": "The Reputation Manager",
-      "outcome": "Every job you finish starts ranking for the next one.",
-      "priceSlot": "[FOUNDER PRICE \u2014 Reputation Manager, monthly]",
-      "workflows": [
-        "Asks every finished client for a review at the moment of completion \u2014 the same ask for everyone, never gated",
-        "Publishes service \u00d7 neighbourhood pages from real completed work",
-        "Keeps your listings (hours, phone) consistent everywhere"
-      ]
-    },
-    {
-      "name": "The Marketer",
-      "outcome": "You see what each campaign actually produced.",
-      "priceSlot": "[FOUNDER PRICE \u2014 Marketer, monthly]",
-      "workflows": [
-        "Runs the offers and ads you approve \u2014 nothing runs unapproved",
-        "Writes the monthly local pages",
-        "Reports what each campaign produced, in numbers"
-      ]
-    },
-    {
-      "name": "The Office Manager (whole office)",
-      "outcome": "One office, one report, one point of contact.",
-      "priceSlot": "[FOUNDER PRICE \u2014 whole office, monthly]",
-      "workflows": [
-        "All of the above, run as one office",
-        "The roles cover for each other",
-        "One monthly report instead of three"
-      ]
-    }
-  ],
-  "subhead": "SiteBefore builds appointment businesses a website that books, then runs the weekly work behind it: enquiries answered, reviews collected, pages published. You approve everything before it goes out.",
-  "trust": [
-    {
-      "line": "You own it.",
-      "text": "The site, the domain, the content, the reviews \u2014 registered to your business, exportable any time."
-    },
-    {
-      "line": "Fixed price before work starts.",
-      "text": "The quote is the price; changes are quoted before they are done, never after."
-    },
-    {
-      "line": "Our AI says it's AI.",
-      "text": "Any automated receptionist or chat identifies itself as automated when a customer interacts with it."
-    },
-    {
-      "line": "Your client data stays in your systems.",
-      "text": "We work inside the tools you already use; we do not pool or resell customer data."
-    },
-    {
-      "line": "Previews are labelled previews.",
-      "text": "Every mockup we show is marked as a concept until it is your live site."
-    },
-    {
-      "line": "A person approves everything that leaves the office.",
-      "text": "Outreach and changes are drafted by the system and approved by a human before they send."
-    }
-  ]
+  "operator": {
+    "legal": "Mission Winning LLC",
+    "responsible": "Snowden Zeng",
+    "address": "[FOUNDER: physical mailing address]"
+  }
 }
