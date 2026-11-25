@@ -1,0 +1,462 @@
+---
+import Base from '../../layouts/Base.astro';
+import Brand from '../../components/Brand.astro';
+import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
+import { getStore, prospectSummary } from '../../lib/store.mjs';
+import { displayPrice } from '../../lib/offer.mjs';
+import { checkoutMode } from '../../lib/checkout.mjs';
+export const prerender = false;
+
+for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
+const operator = isOperator(Astro.cookies);
+const enabled = operatorKey();
+let leads = [],
+  selected,
+  unavailable = false;
+if (operator) {
+  try {
+    const store = await getStore();
+    leads = await store.list();
+    const id = Astro.url.searchParams.get('lead');
+    selected = id ? (leads.find((lead) => lead.id === id) ?? (await store.find(id))) : null;
+  } catch {
+    unavailable = true;
+    Astro.response.status = 503;
+  }
+}
+const stats = [
+  ['Drafts', leads.filter((lead) => !lead.share_token).length],
+  ['Shared', leads.filter((lead) => lead.share_token && !lead.paid_at).length],
+  ['Launch queue', leads.filter((lead) => lead.paid_at && !lead.delivered_at).length],
+  ['Delivered', leads.filter((lead) => lead.delivered_at).length],
+];
+const name = selected && prospectSummary(selected).name;
+const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
+const previewURL = previewPath && new URL(previewPath, Astro.url.origin).href;
+const pitchFact =
+  selected?.data.facts.find((fact) => fact.field === 'story') ??
+  selected?.data.facts.find((fact) => fact.field === 'service');
+const prospectInput = selected?.data ?? {
+  currency: 'USD',
+  businessUrl: '',
+  facts: ['name', 'location', 'trade', 'intro', 'service', 'story']
+    .filter((field) => field !== 'story')
+    .map((field) => ({
+      field,
+      value: '',
+      source: '',
+      excerpt: '',
+      checked: new Date().toISOString().slice(0, 10),
+    })),
+};
+function stage(lead) {
+  if (lead.delivered_at) return 'Delivered';
+  if (lead.paid_at) return 'In launch queue';
+  if (lead.share_token) return 'Preview released';
+  return 'Evidence review';
+}
+---
+
+<Base title="Agency OS · SiteBefore" privatePage>
+  <header>
+    <div class="wrap top">
+      <Brand /><span class="eyebrow">Agency OS</span>
+      {
+        operator && (
+          <form method="post" action="/api/agency">
+            <button class="button outline" name="action" value="sign-out">
+              Sign out
+            </button>
+          </form>
+        )
+      }
+    </div>
+  </header>
+  {
+    !operator ? (
+      <main class="wrap gate">
+        <section class="panel stack">
+          <h1>Operator sign-in</h1>
+          {enabled ? (
+            <form class="stack" method="post" action="/api/agency">
+              {Astro.url.searchParams.has('notice') && (
+                <p role="alert">Check your operator key and try again.</p>
+              )}
+              <label for="key">Operator key</label>
+              <input id="key" name="key" type="password" autocomplete="current-password" required />
+              <button class="button" name="action" value="sign-in">
+                Sign in
+              </button>
+            </form>
+          ) : (
+            <p class="muted">This workspace hasn’t been configured.</p>
+          )}
+        </section>
+      </main>
+    ) : (
+      <main class="wrap dashboard stack">
+        <div class="section-head">
+          <>
+            <div>
+              <>
+                <p class="eyebrow">Prospects and orders</p>
+                <h1>Agency workspace</h1>
+              </>
+            </div>
+            <a class="button" href="/agency/#dossier">
+              New prospect
+            </a>
+          </>
+        </div>
+        {unavailable ? (
+          <p class="panel" role="alert">
+            Agency storage is unavailable.
+          </p>
+        ) : (
+          <>
+            <section class="metrics" aria-label="Latest prospects by stage">
+              {stats.map(([label, value]) => (
+                <div class="panel metric">
+                  <strong>{value}</strong>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </section>
+            <div class="workspace">
+              <section class="panel prospects stack">
+                <div class="list-head">
+                  <h2>Prospects</h2>
+                  {checkoutMode() === 'demo' &&
+                    !leads.some((lead) => lead.business_key === 'example.com/juniper-motor-works') && (
+                      <form method="post" action="/api/agency">
+                        <button class="button outline" name="action" value="seed">
+                          Add fictional demo
+                        </button>
+                      </form>
+                    )}
+                </div>
+                {leads.length ? (
+                  <ul>
+                    {leads.map((lead) => (
+                      <li>
+                        <a
+                          href={`/agency/?lead=${lead.id}#dossier`}
+                          aria-current={selected?.id === lead.id ? 'page' : undefined}
+                        >
+                          <strong>{prospectSummary(lead).name}</strong>
+                          <span>{stage(lead)}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="muted">Import a sourced dossier to start a preview.</p>
+                )}
+              </section>
+              <section class="panel stack" id="dossier">
+                <h2>{name ?? 'New prospect'}</h2>
+                {selected && (
+                  <p class="muted">
+                    {stage(selected)} · {displayPrice(selected.data.currency)}
+                    <br />
+                    <a href={selected.data.businessUrl} rel="noreferrer noopener" target="_blank">
+                      Business source ↗
+                    </a>
+                  </p>
+                )}
+                {selected && (
+                  <details open={!previewPath}>
+                    <summary>Review the source evidence</summary>
+                    <div class="facts">
+                      {selected.data.facts.map((fact) => (
+                        <div class="fact">
+                          <p class="eyebrow">{fact.field}</p>
+                          <strong>{fact.value}</strong>
+                          <p class="quote">{fact.excerpt}</p>
+                          <a href={fact.source} rel="noreferrer noopener" target="_blank">
+                            Open source ↗
+                          </a>{' '}
+                          <small>Checked {fact.checked}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {selected && !previewPath && (
+                  <div class="stack">
+                    <p>
+                      <a href={`/agency/draft/${selected.id}/`} target="_blank" rel="noopener">
+                        Open internal draft ↗
+                      </a>
+                    </p>
+                    <form class="stack" method="post" action="/api/agency">
+                      <input type="hidden" name="id" value={selected.id} />
+                      <input type="hidden" name="revision" value={selected.revision} />
+                      <label class="confirm">
+                        <input name="verified" type="checkbox" value="yes" required /> I checked the sources
+                        and preview. The facts match this business.
+                      </label>
+                      <button class="button" name="action" value="release">
+                        Approve and create share link
+                      </button>
+                    </form>
+                  </div>
+                )}
+                {previewPath ? (
+                  <>
+                    <a class="button outline" href={previewPath}>
+                      Open buyer preview ↗
+                    </a>
+                    <label class="stack">
+                      Private link <input type="text" value={previewURL} readonly />
+                    </label>
+                    {selected.paid_at ? (
+                      <div class="notice stack">
+                        <strong>
+                          {selected.provider === 'demo' ? 'Simulated order' : 'Stripe test order'}
+                        </strong>
+                        <p>
+                          {selected.delivered_at
+                            ? 'Order marked delivered.'
+                            : 'Payment confirmed. This order is ready for fulfillment.'}
+                        </p>
+                        <small>
+                          Order reference <code>{selected.receipt_id}</code>
+                        </small>
+                        {!selected.delivered_at && (
+                          <form method="post" action="/api/agency">
+                            <input type="hidden" name="id" value={selected.id} />
+                            <button class="button" name="action" value="delivered">
+                              Mark delivered
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <details>
+                          <summary>Pitch draft</summary>
+                          <p class="muted">
+                            Draft for review. Verify permission, sender details and opt-out before sharing.
+                          </p>
+                          <textarea
+                            rows="9"
+                            aria-label="Pitch draft"
+                            readonly
+                          >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
+                        </details>
+                        {!selected.attempt && (
+                          <form method="post" action="/api/agency">
+                            <input type="hidden" name="id" value={selected.id} />
+                            <button class="button outline" name="action" value="revoke">
+                              Revoke share link
+                            </button>
+                          </form>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <form class="stack" method="post" action="/api/agency">
+                    {selected && (
+                      <>
+                        <input type="hidden" name="id" value={selected.id} />
+                        <input type="hidden" name="revision" value={selected.revision} />
+                      </>
+                    )}
+                    <label for="prospect">Sourced dossier (JSON)</label>
+                    <p id="dossier-help" class="muted">
+                      Add verbatim facts with their HTTPS source, a matching excerpt and the date you checked
+                      it. Add optional headline and story facts when you have evidence for them.
+                    </p>
+                    <textarea
+                      id="prospect"
+                      name="prospect"
+                      rows={selected ? 9 : 16}
+                      aria-describedby="dossier-help"
+                      required
+                    >
+                      {JSON.stringify(prospectInput, null, 2)}
+                    </textarea>
+                    <button class="button" name="action" value="save">
+                      {selected ? 'Save draft changes' : 'Save prospect'}
+                    </button>
+                  </form>
+                )}
+              </section>
+            </div>
+          </>
+        )}
+      </main>
+    )
+  }
+</Base>
+<style>
+  header {
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .top {
+    display: flex;
+    min-height: 67px;
+    align-items: center;
+    gap: 15px;
+  }
+  .top > span {
+    margin-right: auto;
+  }
+  .top .button {
+    min-height: 34px;
+    font-size: 0.78rem;
+  }
+  .gate,
+  .dashboard {
+    padding-block: 52px;
+  }
+  .gate .panel {
+    width: min(440px, 100%);
+    margin: auto;
+  }
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: clamp(15px, 3vw, 24px);
+    min-width: 0;
+  }
+  .dashboard {
+    gap: 23px;
+  }
+  .section-head,
+  .list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 {
+    font-size: clamp(2.05rem, 5vw, 3.4rem);
+    margin-top: 5px;
+  }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .metric {
+    display: flex;
+    flex-direction: column;
+  }
+  .metric strong {
+    font-size: 1.8rem;
+  }
+  .metric span {
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(245px, 1fr) minmax(0, 2fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .prospects ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .prospects li a {
+    display: grid;
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .prospects li a[aria-current],
+  .notice {
+    background: #e8eee4;
+  }
+  .prospects li a:hover {
+    text-decoration: underline;
+  }
+  .prospects li span {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  .button {
+    justify-self: start;
+  }
+  .facts {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .fact {
+    background: var(--cream);
+    padding: 12px;
+    overflow-wrap: anywhere;
+  }
+  .quote {
+    color: var(--muted);
+    margin-block: 5px;
+  }
+  .fact a,
+  .fact small {
+    font-size: 0.75rem;
+  }
+  .fact small {
+    margin-left: 5px;
+  }
+  label,
+  summary {
+    font-weight: 750;
+  }
+  summary {
+    cursor: pointer;
+  }
+  input:not([type='checkbox']),
+  textarea {
+    border: 1px solid #999f95;
+    background: white;
+    border-radius: 5px;
+    min-height: 42px;
+    width: 100%;
+    padding: 8px;
+    color: var(--ink);
+  }
+  textarea {
+    font: 0.82rem/1.45 monospace;
+    resize: vertical;
+    margin-top: 5px;
+  }
+  .confirm {
+    display: flex;
+    gap: 8px;
+    align-items: start;
+    font-size: 0.9rem;
+  }
+  .confirm input {
+    margin-top: 4px;
+  }
+  .notice {
+    padding: 14px;
+    border-radius: 5px;
+  }
+  .notice code {
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 750px) {
+    .workspace {
+      grid-template-columns: 1fr;
+    }
+    .metrics {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .dashboard {
+      padding-block: 28px;
+    }
+  }
+</style>

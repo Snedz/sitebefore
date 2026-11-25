@@ -1,0 +1,52 @@
+---
+import { displayPrice, scope } from '../lib/offer.mjs';
+const { currency = 'USD', heading = 'Make this site yours' } = Astro.props;
+---
+
+<div class="panel">
+  <div>
+    <p class="eyebrow">Launch package</p><h2>{heading}</h2><p class="total">
+      {displayPrice(currency)}
+      <span>one time</span>
+    </p>
+  </div>
+  <div><ul>{scope.map((item) => <li>{item}</li>)}</ul><slot /></div>
+</div>
+<style>
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: clamp(18px, 4vw, 35px);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .panel h2 {
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    margin-top: 8px;
+  }
+  .total {
+    font-size: 1.25rem;
+    font-weight: 850;
+    margin-top: 11px;
+  }
+  .total span {
+    font-size: 0.84rem;
+    color: var(--muted);
+    font-weight: 600;
+    margin-left: 5px;
+  }
+  .panel ul {
+    margin: 0 0 16px;
+    padding-left: 21px;
+  }
+  .panel li + li {
+    margin-top: 5px;
+  }
+  @media (max-width: 620px) {
+    .panel {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

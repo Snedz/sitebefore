@@ -1,0 +1,11 @@
+{
+  "name": "Juniper Motor Works",
+  "headline": "Good work.\nGood miles.",
+  "location": "Dallas–Fort Worth, Texas",
+  "trade": "Independent auto care",
+  "intro": "Straightforward care for the cars you count on, from weekday commuters to weekend classics.",
+  "story": "A careful look comes first. We explain what we find and talk through what needs attention, what can wait, and what to keep an eye on down the road.",
+  "services": ["Maintenance", "Diagnostics", "Classic car care"],
+  "hero": "/images/juniper-hero.webp",
+  "craft": "/images/juniper-craft.webp"
+}

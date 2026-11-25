@@ -1,0 +1,80 @@
+const singleFields = ['name', 'location', 'trade', 'headline', 'intro', 'story'];
+const required = ['name', 'location', 'trade', 'intro', 'service'];
+
+export class WorkflowError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function clean(value, max, label) {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) {
+    throw new WorkflowError(`${label} must contain 1–${max} characters.`);
+  }
+  return value.trim();
+}
+
+export function normalizeProspect(input) {
+  if (!input || typeof input !== 'object' || !['USD', 'CAD'].includes(input.currency)) {
+    throw new WorkflowError('Set the prospect currency to USD or CAD.');
+  }
+  if (!Array.isArray(input.facts) || input.facts.length > 16) {
+    throw new WorkflowError('Provide up to 16 sourced facts.');
+  }
+  const seen = new Set();
+  const facts = input.facts.map((row) => {
+    if (!row || ![...singleFields, 'service'].includes(row.field)) {
+      throw new WorkflowError('Fact field must be name, location, trade, headline, intro, story or service.');
+    }
+    const { field } = row;
+    if (field !== 'service' && seen.has(field)) throw new WorkflowError(`Duplicate ${field} fact.`);
+    seen.add(field);
+    const value = clean(row.value, field === 'story' || field === 'intro' ? 500 : 110, field);
+    const excerpt = clean(row.excerpt, 1500, 'Evidence excerpt');
+    const normalized = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
+    if (!normalized(excerpt).includes(normalized(value))) {
+      throw new WorkflowError(`The ${field} value must appear in its evidence excerpt.`);
+    }
+    const source = clean(row.source, 1000, 'Evidence URL');
+    let url;
+    try { url = new URL(source); } catch { throw new WorkflowError('Evidence needs a valid HTTPS URL.'); }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+      throw new WorkflowError('Evidence needs an HTTPS URL without credentials.');
+    }
+    const checked = clean(row.checked, 10, 'Evidence date');
+    const retrieved = new Date(checked + 'T00:00:00.000Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(checked) || !Number.isFinite(+retrieved) ||
+        retrieved.toISOString().slice(0, 10) !== checked) {
+      throw new WorkflowError('Use an evidence date in YYYY-MM-DD format.');
+    }
+    return { field, value, source: url.href, excerpt, checked };
+  });
+  if (required.some(field => !seen.has(field))) {
+    throw new WorkflowError('Include the business name, location, trade, intro and at least one service.');
+  }
+  const contactUrl = clean(input.businessUrl, 500, 'Business URL');
+  let business;
+  try { business = new URL(contactUrl); } catch { throw new WorkflowError('Add a valid HTTPS business or booking URL.'); }
+  if (business.protocol !== 'https:' || business.username || business.password) {
+    throw new WorkflowError('Add an HTTPS business or booking URL without credentials.');
+  }
+  const businessKey = business.hostname.replace(/^www\./, '') + business.pathname.replace(/\/+$/, '');
+  return { currency: input.currency, businessUrl: business.href, businessKey, facts };
+}
+
+export function checkFreshness(facts, now = Date.now()) {
+  const currentDay = Math.floor(now / 86400000);
+  const issue = facts.find(fact => {
+    const age = currentDay - Date.parse(fact.checked) / 86400000;
+    return age < 0 || age > 30;
+  });
+  if (issue) throw new WorkflowError(`Refresh the ${issue.field} evidence before sharing (maximum age 30 days).`);
+}
+
+export function publicProfile(prospect) {
+  return {
+    ...Object.fromEntries(prospect.facts.filter(item => item.field !== 'service').map(item => [item.field, item.value])),
+    services: [...new Set(prospect.facts.filter(item => item.field === 'service').map(item => item.value))],
+  };
+}

@@ -1,0 +1,16 @@
+---
+import StoryPreview from '../../../components/StoryPreview.astro';
+import { isOperator, privateHeaders } from '../../../lib/http.mjs';
+import { getStore, prospectSummary } from '../../../lib/store.mjs';
+export const prerender = false;
+
+for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
+if (!isOperator(Astro.cookies))
+  return new Response('Sign in to view drafts.', { status: 401, headers: privateHeaders });
+const lead = await (await getStore()).find(Astro.params.id);
+if (!lead) return new Response('Draft not found.', { status: 404, headers: privateHeaders });
+---
+
+<StoryPreview profile={prospectSummary(lead)}>
+  <h2>Internal design review</h2><p>Return to Agency OS to approve or edit this version.</p>
+</StoryPreview>

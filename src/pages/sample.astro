@@ -1,6 +1,14 @@
 ---
-import Preview from '../components/Preview.astro';
-import sampleProfile from '../data/sample-profile.json';
+import StoryPreview from '../components/StoryPreview.astro';
+import PricePanel from '../components/PricePanel.astro';
+import sampleProfile from '../data/juniper.json';
 ---
 
-<Preview profile={sampleProfile} sample={true} />
+<StoryPreview profile={sampleProfile} sample>
+  <PricePanel heading="See what’s included">
+    <p class="muted">
+      This is a fictional sample. Checkout is available on an approved preview built for your business.
+    </p>
+    <p><a href="/">Back to SiteBefore</a></p>
+  </PricePanel>
+</StoryPreview>

@@ -19,6 +19,7 @@ const fullAddress = `${p.address.street}, ${p.address.city}, ${p.address.provinc
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
     <title>{sample ? 'SAMPLE — ' : ''}{p.businessName} — {p.address.city}</title>
     <meta name="description" content={`${p.businessName} — ${p.tagline}. ${fullAddress}. Call ${p.phone}.`} />
     <style>
