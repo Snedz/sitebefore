@@ -44,11 +44,11 @@ export async function readBody(request, limit = 45000) {
   }
 }
 
-export async function readForm(request) {
+export async function readForm(request, limit) {
   if (request.headers.get('content-type')?.split(';')[0] !== 'application/x-www-form-urlencoded') {
     throw new WorkflowError('Use the SiteBefore form.', 415);
   }
-  return new URLSearchParams(await readBody(request));
+  return new URLSearchParams(await readBody(request, limit));
 }
 
 const cookieName = 'sitebefore_operator';

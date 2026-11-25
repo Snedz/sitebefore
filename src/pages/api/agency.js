@@ -9,7 +9,8 @@ export async function POST({ request, cookies }) {
   let id;
   try {
     sameOrigin(request);
-    const form = await readForm(request);
+    // Allow for percent encoding of the dossier's 16 facts and their excerpts.
+    const form = await readForm(request, 512 * 1024);
     const action = form.get('action');
     id = form.get('id');
     if (action === 'sign-in') {

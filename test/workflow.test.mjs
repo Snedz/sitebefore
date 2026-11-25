@@ -9,6 +9,7 @@ import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { offerVersion, price } from '../src/lib/offer.mjs';
 import { checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
+import { readForm } from '../src/lib/http.mjs';
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');
@@ -27,6 +28,19 @@ test('dossiers reject unsupported claims and keep raw evidence out of preview da
   input.facts[0] = { ...makeDemoProspect().facts[0], checked: '2026-02-30' };
   assert.throws(() => normalizeProspect(input), /YYYY-MM-DD/);
   assert.throws(() => checkFreshness([{ field: 'location', checked: '2026-01-01' }], Date.parse('2026-02-02')), /Refresh/);
+});
+
+test('an operator form can carry a full multilingual dossier', async () => {
+  const input = makeDemoProspect();
+  while (input.facts.length < 16) input.facts.push(input.facts.find(fact => fact.field === 'service'));
+  input.facts = input.facts.map(fact => ({
+    ...fact, excerpt: fact.value + ' ' + '例'.repeat(1500 - fact.value.length - 1),
+  }));
+  const body = new URLSearchParams({ action: 'save', dossier: JSON.stringify(input, null, 2) });
+  const request = () => new Request('https://example.com/api/agency', { method: 'POST', body });
+  await assert.rejects(readForm(request()), /too large/);
+  const form = await readForm(request(), 512 * 1024);
+  assert.equal(normalizeProspect(JSON.parse(form.get('dossier'))).facts.length, 16);
 });
 
 test('approval binds to the reviewed revision and revoking reopens the draft', async t => {
