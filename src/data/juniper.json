@@ -1,11 +1,28 @@
 {
   "name": "Juniper Motor Works",
-  "headline": "Good work.\nGood miles.",
+  "headline": "Built for\nmore miles.",
   "location": "Dallas–Fort Worth, Texas",
   "trade": "Independent auto care",
-  "intro": "Straightforward care for the cars you count on, from weekday commuters to weekend classics.",
-  "story": "A careful look comes first. We explain what we find and talk through what needs attention, what can wait, and what to keep an eye on down the road.",
+  "intro": "Maintenance, diagnostics, and classic-car care for the car you drive every day or save for the weekend.",
+  "story": "We start by listening to what you’ve noticed. Then we look at the car and walk you through what we found. You’ll know what needs attention now, what can wait, and what to watch for on your next drive.",
   "services": ["Maintenance", "Diagnostics", "Classic car care"],
+  "concerns": [
+    {
+      "title": "A warning light came on",
+      "service": "Diagnostics",
+      "copy": "Start with a diagnostic visit. Tell us which light came on and what you were doing when you first noticed it. That gives us a starting point for the inspection."
+    },
+    {
+      "title": "I’m due for routine service",
+      "service": "Maintenance",
+      "copy": "Start with the mileage and any service records you have. We can use those to talk through the maintenance that’s due."
+    },
+    {
+      "title": "I’m keeping an older car on the road",
+      "service": "Classic car care",
+      "copy": "Bring the year, make, and model, and tell us how you use the car. We can start with what needs attention and work through what you’d like to preserve."
+    }
+  ],
   "hero": "/images/juniper-hero.webp",
   "craft": "/images/juniper-craft.webp"
 }

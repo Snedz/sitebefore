@@ -1,216 +1,211 @@
 ---
+import '@fontsource/barlow-condensed/latin-700.css';
 import Base from '../layouts/Base.astro';
 import Brand from './Brand.astro';
-const { profile, sample = false } = Astro.props;
+const { profile, sample = false, contactUrl } = Astro.props;
+const concerns = sample ? profile.concerns : null;
+const shopName = sample ? 'Juniper' : profile.name;
 ---
 
 <Base title={`${profile.name} · SiteBefore Preview`} privatePage>
-  <aside class="preview-bar">
+  <a class="skip button" href="#main">Skip to content</a>
+  <aside class="preview-bar" aria-label="SiteBefore preview">
     <div class="wrap bar-wrap">
-      <Brand /><span>{sample ? 'Fictional sample' : 'Private preview · Unaffiliated'}</span><a href="#offer"
-        >{sample ? 'Launch package' : 'Review your offer'} <span aria-hidden="true">↓</span></a>
+      <Brand /><span>{sample ? 'Fictional sample' : 'Private preview · Unaffiliated'}</span>
+      <a href="#offer">{sample ? 'Launch package' : 'Review your offer'} <span aria-hidden="true">↓</span></a>
     </div>
   </aside>
-  <main>
-    <section class:list={['work-hero', { illustrated: profile.hero }]}>
-      {profile.hero && <img src={profile.hero} alt="" width="1280" height="853" fetchpriority="high" />}
-      <div class="wrap content">
-        <p class="eyebrow">{profile.trade} · {profile.location}</p>
-        <p class="shop">{profile.name}</p>
-        <h1>{profile.headline ?? profile.name}</h1>
-        <p class="description">{profile.intro}</p>
-        <a class="button light" href="#services">Explore services <span aria-hidden="true">↓</span></a>
-      </div>
-    </section>
-    <section class="wrap services" id="services">
-      <p class="eyebrow">Services</p>
-      <h2>{profile.hero ? 'Back on the road.' : 'How we can help.'}</h2>
-      <ul>{profile.services.map((service) => <li>{service}</li>)}</ul>
-    </section>
-    {
-      profile.story && (
-        <section class="story">
-          <div class:list={['wrap story-grid', { 'has-image': profile.craft }]}>
-            {profile.craft && (
-              <img
-                src={profile.craft}
-                alt="Illustration of a mechanic working on an engine"
-                width="1000"
-                height="667"
-                loading="lazy"
-              />
-            )}
-            <div>
-              <>
-                <p class="eyebrow">Our story</p>
-                <h2>{profile.hero ? 'Care in the work.' : profile.name}</h2>
-                <p>{profile.story}</p>
-              </>
+  <main id="main">
+    <div class="shop">
+      <header class="shop-header" id="shop">
+        <div class="shop-wrap shop-nav">
+          <a class="wordmark" href="#shop" aria-label={profile.name}>
+            {shopName}{sample && <small>Motor Works</small>}
+          </a>
+          <nav aria-label="Shop navigation">
+            <a href="#services">Services</a>
+            {profile.story && <a href="#workshop">About</a>}
+            {contactUrl && <a href={contactUrl}>Contact</a>}
+          </nav>
+        </div>
+      </header>
+      <section class:list={['work-hero', { illustrated: profile.hero }]}>
+        <div class="hero-content">
+          <p class="label">{profile.trade} <span aria-hidden="true">/</span> {profile.location}</p>
+          <h1>{profile.headline ?? profile.name}</h1>
+          <p class="description">{profile.intro}</p>
+          <a class="shop-button" href={contactUrl ?? '#services'}>
+            {contactUrl ? 'Contact the business' : 'Find your service'}
+            <span aria-hidden="true">{contactUrl ? '↗' : '↓'}</span>
+          </a>
+        </div>
+        {profile.hero && (
+          <img src={profile.hero} alt="Classic fastback parked in the Juniper workshop" width="1440" height="960" fetchpriority="high" />
+        )}
+      </section>
+      <section class="shop-wrap services" id="services">
+        <div class="section-intro">
+          <p class="label">Services</p>
+          <h2>{concerns ? 'What brings you in?' : 'How we can help'}</h2>
+          {concerns && <p>Choose what you’re dealing with to see where to start.</p>}
+        </div>
+        {concerns ? (
+          <div class="choices">
+            {concerns.map(({ title, copy, service }) => (
+              <details name="juniper-concerns">
+                <summary>{title}</summary>
+                <div class="answer">
+                  <p class="label">{service}</p>
+                  <p>{copy}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <ul class="service-list">{profile.services.map((service) => <li>{service}</li>)}</ul>
+        )}
+      </section>
+      {profile.story && (
+        <section class="story" id="workshop">
+          <div class:list={['shop-wrap story-grid', { 'has-image': profile.craft }]}>
+            {profile.craft && <img src={profile.craft} alt="Mechanic working under the hood of a classic car" width="1000" height="667" loading="lazy" />}
+            <div class="section-intro">
+              <p class="label">{sample ? 'In the workshop' : 'About'}</p>
+              <h2>{sample ? 'A careful look comes first.' : profile.name}</h2>
+              <p>{profile.story}</p>
             </div>
           </div>
         </section>
-      )
-    }
-    <section class="wrap offer" id="offer"><slot /></section>
+      )}
+      <div class="shop-end">
+        <div class="shop-wrap end-inner">
+          <p>{profile.name}<small>{profile.location}</small></p>
+          {contactUrl ? <a href={contactUrl}>Contact the business <span aria-hidden="true">↗</span></a> : <a href="#shop">Back to top <span aria-hidden="true">↑</span></a>}
+        </div>
+      </div>
+    </div>
+    <section class="wrap offer" id="offer" aria-label="SiteBefore offer"><slot /></section>
   </main>
   <footer>
     <div class="wrap">
-      <Brand inverse /><p>
-        {
-          sample
-            ? 'Illustrative business and imagery created for this sample.'
-            : `Concept prepared for ${profile.name}. This preview is not their live website.`
-        }
-      </p>
+      <Brand inverse />
+      <p>{sample ? 'Illustrative business and imagery created for this sample.' : `Concept prepared for ${profile.name}. This preview is not their live website.`}</p>
     </div>
   </footer>
 </Base>
+
 <style>
-  .preview-bar {
-    background: var(--paper);
-    border-bottom: 1px solid var(--line);
-    position: relative;
-  }
-  .bar-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 62px;
-  }
-  .bar-wrap > span {
-    text-align: center;
-    font-size: 0.75rem;
-    font-weight: 750;
-    color: var(--muted);
-  }
-  .bar-wrap > a:last-child {
-    font-size: 0.83rem;
-    font-weight: 750;
-    text-align: right;
-  }
-  .work-hero {
-    background: #243a2d;
-    color: #fcf0d9;
-    position: relative;
-    overflow: hidden;
-  }
-  .work-hero > img {
-    position: absolute;
-    inset: 0;
-    height: 100%;
-    object-fit: cover;
-    object-position: center 56%;
-  }
-  .work-hero.illustrated::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, #14251bed 5%, #14251bc0 34%, #14251b07 90%);
-  }
-  .content {
-    position: relative;
-    z-index: 1;
-    padding-block: clamp(74px, 9vw, 125px);
-  }
-  .work-hero .eyebrow {
-    color: #f1b4a0;
-  }
+  .preview-bar { background: var(--paper); border-bottom: 1px solid var(--line); }
+  .bar-wrap { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-height: 58px; }
+  .bar-wrap > span, .bar-wrap > a:last-child { font-size: 0.78rem; font-weight: 750; }
+  .bar-wrap > span { color: var(--muted); text-align: center; }
+  .bar-wrap > a:last-child { text-align: right; }
   .shop {
-    font-weight: 800;
-    margin-top: 10px;
+    --shop-black: #191b19;
+    --shop-paper: #f4f0e8;
+    --shop-rust: #f7986d;
+    --shop-display: 'Barlow Condensed', 'Bricolage Grotesque Variable', sans-serif;
+    background: var(--shop-paper);
+    color: var(--shop-black);
   }
-  .work-hero h1 {
-    margin-block: 14px;
-    white-space: pre-line;
-    font: 400 clamp(4rem, 9vw, 8rem) / 0.85 var(--serif);
-    letter-spacing: -0.04em;
-    max-width: 750px;
+  .shop-wrap { width: min(1280px, calc(100% - 2 * clamp(20px, 5vw, 72px))); margin-inline: auto; }
+  .shop-header, .work-hero, .shop-end { background: var(--shop-black); color: var(--shop-paper); }
+  .shop-header { border-bottom: 1px solid #fff2; }
+  .shop-nav, .end-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .shop-nav { min-height: 76px; padding-block: 12px; }
+  .wordmark {
+    font: 700 clamp(1.35rem, 3vw, 2.15rem)/0.9 var(--shop-display);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    text-decoration: none;
     overflow-wrap: anywhere;
   }
-  .description {
-    margin-block: 22px;
-    max-width: 390px;
-    color: #fff5e5;
-  }
-  .services,
-  .offer {
-    padding-block: 55px;
-  }
-  .services h2,
-  .story h2 {
-    font: 400 clamp(2.7rem, 6vw, 5rem) / 0.95 var(--serif);
-    margin-block: 10px 20px;
-  }
-  .services ul {
+  .wordmark small { display: block; color: var(--shop-rust); font-size: 0.55em; letter-spacing: 0.19em; margin-top: 5px; }
+  .shop-nav nav { display: flex; flex-wrap: wrap; gap: 5px clamp(15px, 4vw, 44px); justify-content: end; }
+  .shop-nav nav a, .end-inner a { font-size: 0.9rem; font-weight: 700; text-decoration: none; }
+  .shop-nav nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .shop-nav nav a:hover, .end-inner a:hover { text-decoration: underline; }
+  .work-hero { display: grid; }
+  .work-hero.illustrated { grid-template-columns: minmax(0, 46fr) minmax(0, 54fr); }
+  .hero-content {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-    gap: 10px;
-    list-style: none;
-    padding: 0;
-    margin: 0;
+    align-content: center;
+    justify-items: start;
+    padding: clamp(52px, 7vw, 100px) clamp(20px, 5vw, 72px);
   }
-  .services li {
-    border: 1px solid var(--line);
-    padding: 16px;
-    background: var(--paper);
+  .work-hero:not(.illustrated) .hero-content { width: 100%; max-width: 1424px; margin-inline: auto; }
+  .label { font: 700 0.75rem/1.5 var(--body); text-transform: uppercase; letter-spacing: 0.12em; }
+  .hero-content .label { color: var(--shop-rust); }
+  .hero-content .label span { margin-inline: 3px; }
+  .hero-content h1 {
+    font: 700 clamp(3.1rem, 8.3vw, 7.5rem)/0.84 var(--shop-display);
+    letter-spacing: -0.018em;
+    text-transform: uppercase;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    margin-block: 22px;
+    max-width: 17ch;
+  }
+  .description { max-width: 37ch; font-size: clamp(1rem, 1.4vw, 1.16rem); color: #dfdbd2; }
+  .shop-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 23px;
+    justify-content: space-between;
+    min-height: 48px;
+    margin-top: 26px;
+    padding: 11px 17px;
+    background: var(--shop-rust);
+    color: var(--shop-black);
+    text-decoration: none;
     font-weight: 800;
   }
-  .story {
-    background: #e8e4d7;
+  .shop-button:hover { background: #ffb08b; }
+  .work-hero > img { height: 100%; object-fit: cover; object-position: center; }
+  .services, .story-grid { padding-block: clamp(46px, 7vw, 100px); }
+  .services { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 30px clamp(25px, 6vw, 92px); }
+  .section-intro h2 {
+    font: 700 clamp(2.65rem, 5.6vw, 5rem)/0.92 var(--shop-display);
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+    margin-block: 12px 16px;
   }
-  .story-grid {
-    display: grid;
-    gap: 25px;
-    padding-block: 35px;
-    align-items: center;
+  .section-intro > p:last-child { max-width: 46ch; }
+  .choices, .service-list { border-top: 1px solid #aea599; }
+  .choices details, .service-list li { border-bottom: 1px solid #aea599; }
+  .choices summary, .service-list li {
+    font: 700 clamp(1.3rem, 2.7vw, 1.9rem)/1.1 var(--shop-display);
+    padding-block: 19px;
+    overflow-wrap: anywhere;
   }
-  .story-grid.has-image {
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(16px, 5vw, 65px);
+  .choices summary { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-inline: 8px; cursor: pointer; }
+  .choices summary:focus-visible { outline-offset: -3px; }
+  .choices summary::-webkit-details-marker { display: none; }
+  .choices summary::after { content: ''; inline-size: 10px; block-size: 10px; margin-right: 4px; border-right: 2px solid; border-bottom: 2px solid; transform: rotate(45deg); flex: none; }
+  .choices details[open] summary::after { transform: rotate(225deg); }
+  .choices summary:hover, .choices details[open] summary, .answer .label { color: #8e341d; }
+  .answer { display: grid; gap: 6px; padding: 0 8px 22px; max-width: 58ch; }
+  .service-list { margin: 0; padding: 0; list-style: none; }
+  .story { background: #e8dfd1; }
+  .story-grid { display: grid; align-items: center; gap: clamp(24px, 5vw, 78px); }
+  .story-grid.has-image { grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr); }
+  .story-grid img { aspect-ratio: 3/2; object-fit: cover; }
+  .end-inner { padding-block: 22px; flex-wrap: wrap; }
+  .end-inner p { font-weight: 800; overflow-wrap: anywhere; }
+  .end-inner small { display: block; font-weight: 500; color: #dfdbd2; }
+  .shop-header :focus-visible, .work-hero :focus-visible, .shop-end :focus-visible { outline-color: var(--shop-rust); }
+  .offer { padding-block: clamp(36px, 6vw, 75px); }
+  footer { background: var(--green); color: var(--cream); padding-block: 21px; }
+  footer > .wrap { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+  footer p { font-size: 0.86rem; }
+  @media (max-width: 760px) {
+    .work-hero.illustrated, .services, .story-grid.has-image { grid-template-columns: minmax(0, 1fr); }
+    .work-hero > img { height: auto; aspect-ratio: 3/2; }
+    .hero-content { padding-block: 36px; }
+    .hero-content h1 { font-size: clamp(3.25rem, 13vw, 6rem); }
   }
-  .story img {
-    border-radius: 6px;
-  }
-  .story-grid p:last-child {
-    max-width: 52ch;
-  }
-  .offer {
-    scroll-margin-top: 20px;
-  }
-  footer {
-    background: var(--green);
-    color: var(--cream);
-    padding-block: 21px;
-  }
-  footer > .wrap {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 15px;
-    flex-wrap: wrap;
-  }
-  footer p {
-    font-size: 0.86rem;
-  }
-  @media (max-width: 650px) {
-    .story-grid.has-image {
-      grid-template-columns: 1fr;
-    }
-    .bar-wrap {
-      min-height: 60px;
-    }
-    .bar-wrap > span {
-      font-size: 0.62rem;
-    }
-    .bar-wrap > a:last-child {
-      font-size: 0.68rem;
-    }
-    .work-hero.illustrated::after {
-      background: linear-gradient(90deg, #14251be9, #14251b54);
-    }
-    .work-hero h1 {
-      font-size: clamp(3rem, 13vw, 5rem);
-    }
+  @media (max-width: 420px) {
+    .bar-wrap > span, .bar-wrap > a:last-child { font-size: 0.68rem; }
   }
 </style>

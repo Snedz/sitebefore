@@ -1,7 +1,9 @@
 import profile from './juniper.json' with { type: 'json' };
 
+export const demoBusinessUrl = 'https://example.com/juniper-motor-works';
+
 export function makeDemoProspect() {
-  const businessUrl = 'https://example.com/juniper-motor-works';
+  const businessUrl = demoBusinessUrl;
   const checked = new Date().toISOString().slice(0, 10);
   const facts = Object.entries(profile)
     .filter(([field]) => ['name', 'location', 'trade', 'intro', 'story'].includes(field))

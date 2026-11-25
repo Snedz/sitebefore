@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import StoryPreview from '../../components/StoryPreview.astro';
 import PricePanel from '../../components/PricePanel.astro';
+import { demoBusinessUrl } from '../../data/demo-prospect.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 import { privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
@@ -32,7 +33,7 @@ const status = Astro.url.searchParams.get('checkout');
 
 {
   lead ? (
-    <StoryPreview profile={prospectSummary(lead)}>
+    <StoryPreview profile={prospectSummary(lead)} contactUrl={lead.data.businessUrl === demoBusinessUrl ? undefined : lead.data.businessUrl}>
       <PricePanel currency={lead.data.currency}>
         {lead.paid_at ? (
           <div class="notice stack" role="status">

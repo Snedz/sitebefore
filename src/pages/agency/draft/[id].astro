@@ -1,5 +1,6 @@
 ---
 import StoryPreview from '../../../components/StoryPreview.astro';
+import { demoBusinessUrl } from '../../../data/demo-prospect.mjs';
 import { isOperator, privateHeaders } from '../../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../../lib/store.mjs';
 export const prerender = false;
@@ -11,6 +12,6 @@ const lead = await (await getStore()).find(Astro.params.id);
 if (!lead) return new Response('Draft not found.', { status: 404, headers: privateHeaders });
 ---
 
-<StoryPreview profile={prospectSummary(lead)}>
+<StoryPreview profile={prospectSummary(lead)} contactUrl={lead.data.businessUrl === demoBusinessUrl ? undefined : lead.data.businessUrl}>
   <h2>Internal design review</h2><p>Return to Agency OS to approve or edit this version.</p>
 </StoryPreview>
