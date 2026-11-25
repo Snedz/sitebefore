@@ -1,4 +1,4 @@
-import { checkoutMode, startStripeCheckout } from '../../lib/checkout.mjs';
+import { checkoutMode, checkoutOrigin, startStripeCheckout } from '../../lib/checkout.mjs';
 import { readForm, fail, sameOrigin, privateRedirect } from '../../lib/http.mjs';
 import { getStore, simulatedSession } from '../../lib/store.mjs';
 import { WorkflowError } from '../../lib/prospect.mjs';
@@ -10,8 +10,8 @@ export async function POST({ request, url }) {
     sameOrigin(request);
     const mode = checkoutMode();
     if (!mode) throw new WorkflowError('Test checkout is unavailable.', 503);
-    const origin = process.env.SITEBEFORE_ORIGIN ? new URL(process.env.SITEBEFORE_ORIGIN).origin : null;
-    if (mode === 'stripe-test' && (origin !== url.origin || (url.protocol !== 'https:' && !import.meta.env.DEV))) {
+    const origin = checkoutOrigin();
+    if (mode === 'stripe-test' && origin !== url.origin) {
       throw new WorkflowError('Checkout is unavailable on this hostname.', 503);
     }
     const form = await readForm(request);

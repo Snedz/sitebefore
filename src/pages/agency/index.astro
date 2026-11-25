@@ -4,7 +4,7 @@ import Brand from '../../components/Brand.astro';
 import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
 import { displayPrice } from '../../lib/offer.mjs';
-import { checkoutMode } from '../../lib/checkout.mjs';
+import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
@@ -32,7 +32,7 @@ const stats = [
 ];
 const name = selected && prospectSummary(selected).name;
 const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
-const previewURL = previewPath && new URL(previewPath, Astro.url.origin).href;
+const previewURL = previewPath && new URL(previewPath, checkoutOrigin() ?? Astro.url.origin).href;
 const pitchFact =
   selected?.data.facts.find((fact) => fact.field === 'story') ??
   selected?.data.facts.find((fact) => fact.field === 'service');
@@ -204,7 +204,7 @@ function stage(lead) {
                 )}
                 {previewPath ? (
                   <>
-                    <a class="button outline" href={previewPath}>
+                    <a class="button outline" href={previewURL}>
                       Open buyer preview ↗
                     </a>
                     <label class="stack">

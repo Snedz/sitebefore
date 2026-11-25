@@ -8,7 +8,14 @@ import { createStore } from '../src/lib/store.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { offerVersion, price } from '../src/lib/offer.mjs';
-import { failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
+import { checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
+
+test('checkout and published links can share one valid configured origin', () => {
+  assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');
+  assert.equal(checkoutOrigin('http://localhost:4321', true), 'http://localhost:4321');
+  assert.equal(checkoutOrigin('http://localhost:4321', false), null);
+  assert.equal(checkoutOrigin('https://preview.example.com/agency'), null);
+});
 
 test('dossiers reject unsupported claims and keep raw evidence out of preview data', () => {
   const input = makeDemoProspect();

@@ -2,7 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import StoryPreview from '../../components/StoryPreview.astro';
 import PricePanel from '../../components/PricePanel.astro';
-import { checkoutMode } from '../../lib/checkout.mjs';
+import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 import { privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
 export const prerender = false;
@@ -18,7 +18,15 @@ if (/^[A-Za-z0-9_-]{32}$/.test(token)) {
   }
 }
 if (!lead && Astro.response.status === 200) Astro.response.status = 404;
-const mode = checkoutMode();
+let mode = checkoutMode();
+if (mode === 'stripe-test') {
+  const origin = checkoutOrigin();
+  if (lead && origin && origin !== Astro.url.origin) {
+    const location = new URL('/p/' + token + '/' + Astro.url.search, origin).href;
+    return new Response(null, { status: 307, headers: {...privateHeaders, location} });
+  }
+  if (!origin) mode = null;
+}
 const status = Astro.url.searchParams.get('checkout');
 ---
 

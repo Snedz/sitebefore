@@ -12,6 +12,17 @@ export function checkoutMode() {
 }
 const stripeClient = () => new Stripe(process.env.STRIPE_SECRET_KEY, { maxNetworkRetries: 2 });
 
+export function checkoutOrigin(value = process.env.SITEBEFORE_ORIGIN, dev = import.meta.env?.DEV) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
+    return url.protocol === 'https:' || (dev && url.protocol === 'http:') ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function startStripeCheckout(store, lead, path, origin) {
   const stripe = stripeClient();
   if (lead.checkout_id) {
