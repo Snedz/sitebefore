@@ -36,11 +36,11 @@ test('an operator form can carry a full multilingual dossier', async () => {
   input.facts = input.facts.map(fact => ({
     ...fact, excerpt: fact.value + ' ' + '例'.repeat(1500 - fact.value.length - 1),
   }));
-  const body = new URLSearchParams({ action: 'save', dossier: JSON.stringify(input, null, 2) });
+  const body = new URLSearchParams({ action: 'save', prospect: JSON.stringify(input, null, 2) });
   const request = () => new Request('https://example.com/api/agency', { method: 'POST', body });
   await assert.rejects(readForm(request()), /too large/);
   const form = await readForm(request(), 512 * 1024);
-  assert.equal(normalizeProspect(JSON.parse(form.get('dossier'))).facts.length, 16);
+  assert.equal(normalizeProspect(JSON.parse(form.get('prospect'))).facts.length, 16);
 });
 
 test('approval binds to the reviewed revision and revoking reopens the draft', async t => {
@@ -106,14 +106,22 @@ test('older paid orders stay visible after 100 new prospects', async t => {
   for (let index = 0; index < 100; index++) {
     await db.save({ ...input, businessUrl: `https://example.com/prospect/${index}` });
   }
-  assert.equal((await db.list()).length, 100);
+  const firstPage = await db.list();
+  assert.equal(firstPage.leads.length, 100);
+  assert.equal(firstPage.hasNext, true);
+  assert.ok(firstPage.leads.every(lead => !('payload' in lead)));
   assert.ok(await db.pay({
     id, attempt, sessionId: 'old-order', amount: price, currency: 'USD',
     version: offerVersion, provider: 'demo',
   }));
-  assert.equal((await db.list())[0].id, id);
+  assert.equal((await db.list()).leads[0].id, id);
+  assert.equal((await db.counts()).queued, 1);
   await db.markDelivered(id);
-  assert.ok((await db.list()).find(lead => lead.id === id)?.delivered_at);
+  const history = await db.list(2);
+  assert.equal(history.leads[0].id, id);
+  assert.ok(history.leads[0].delivered_at);
+  assert.equal(history.hasNext, false);
+  assert.equal((await db.counts()).delivered, 1);
 });
 
 test('only signed, paid Stripe sandbox events can become order candidates', () => {

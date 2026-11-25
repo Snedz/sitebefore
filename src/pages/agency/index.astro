@@ -10,26 +10,46 @@ export const prerender = false;
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
 const operator = isOperator(Astro.cookies);
 const enabled = operatorKey();
+const requestedPage = Number(Astro.url.searchParams.get('page'));
+const page = Number.isInteger(requestedPage) && requestedPage > 0 && requestedPage <= 1_000_000
+  ? requestedPage : 1;
 let leads = [],
   selected,
+  counts,
+  hasNext = false,
+  showDemo = false,
   unavailable = false;
 if (operator) {
   try {
     const store = await getStore();
-    leads = await store.list();
     const id = Astro.url.searchParams.get('lead');
-    selected = id ? (leads.find((lead) => lead.id === id) ?? (await store.find(id))) : null;
+    const [list, totals, lead, demoExists] = await Promise.all([
+      store.list(page),
+      store.counts(),
+      id ? store.find(id) : null,
+      checkoutMode() === 'demo' ? store.hasBusiness('example.com/juniper-motor-works') : true,
+    ]);
+    ({ leads, hasNext } = list);
+    counts = totals;
+    selected = lead;
+    showDemo = !demoExists;
   } catch {
     unavailable = true;
     Astro.response.status = 503;
   }
 }
 const stats = [
-  ['Drafts', leads.filter((lead) => !lead.share_token).length],
-  ['Shared', leads.filter((lead) => lead.share_token && !lead.paid_at).length],
-  ['Launch queue', leads.filter((lead) => lead.paid_at && !lead.delivered_at).length],
-  ['Delivered', leads.filter((lead) => lead.delivered_at).length],
+  ['Drafts', counts?.drafts],
+  ['Shared', counts?.shared],
+  ['Launch queue', counts?.queued],
+  ['Delivered', counts?.delivered],
 ];
+function workspaceLink(listPage, id, anchor) {
+  const query = new URLSearchParams();
+  if (listPage > 1) query.set('page', String(listPage));
+  if (id) query.set('lead', id);
+  return '/agency/' + (query.size ? '?' + query : '') + '#' + anchor;
+}
 const name = selected && prospectSummary(selected).name;
 const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
 const previewURL = previewPath && new URL(previewPath, checkoutOrigin() ?? Astro.url.origin).href;
@@ -114,7 +134,7 @@ function stage(lead) {
           </p>
         ) : (
           <>
-            <section class="metrics" aria-label="Latest prospects by stage">
+            <section class="metrics" aria-label="Prospects by stage">
               {stats.map(([label, value]) => (
                 <div class="panel metric">
                   <strong>{value}</strong>
@@ -123,11 +143,10 @@ function stage(lead) {
               ))}
             </section>
             <div class="workspace">
-              <section class="panel prospects stack">
+              <section class="panel prospects stack" id="prospects">
                 <div class="list-head">
                   <h2>Prospects</h2>
-                  {checkoutMode() === 'demo' &&
-                    !leads.some((lead) => lead.business_key === 'example.com/juniper-motor-works') && (
+                  {showDemo && (
                       <form method="post" action="/api/agency">
                         <button class="button outline" name="action" value="seed">
                           Add fictional demo
@@ -140,17 +159,23 @@ function stage(lead) {
                     {leads.map((lead) => (
                       <li>
                         <a
-                          href={`/agency/?lead=${lead.id}#dossier`}
+                          href={workspaceLink(page, lead.id, 'dossier')}
                           aria-current={selected?.id === lead.id ? 'page' : undefined}
                         >
-                          <strong>{prospectSummary(lead).name}</strong>
+                          <strong>{lead.name}</strong>
                           <span>{stage(lead)}</span>
                         </a>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p class="muted">Import a sourced dossier to start a preview.</p>
+                  <p class="muted">{page === 1 ? 'Import a sourced dossier to start a preview.' : 'No prospects on this page.'}</p>
+                )}
+                {(page > 1 || hasNext) && (
+                  <nav class="list-head" aria-label="Prospect pages">
+                    {page > 1 && <a href={workspaceLink(page - 1, selected?.id, 'prospects')}>Previous page</a>}
+                    {hasNext && <a href={workspaceLink(page + 1, selected?.id, 'prospects')}>Next page</a>}
+                  </nav>
                 )}
               </section>
               <section class="panel stack" id="dossier">

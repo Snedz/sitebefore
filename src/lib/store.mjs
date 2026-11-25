@@ -22,6 +22,7 @@ const now = () => new Date().toISOString();
 const hydrate = row => row && ({ ...row, data: JSON.parse(String(row.payload)) });
 const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id
   FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id`;
+const pageSize = 100;
 
 export async function createStore(config) {
   const db = createClient(config);
@@ -30,12 +31,27 @@ export async function createStore(config) {
   const find = async id => hydrate((await execute(select + ' WHERE p.id = ?', [id])).rows[0]);
   return {
     close: () => db.close(),
-    list: async () => (await execute(select + `
-      WHERE o.paid_at IS NOT NULL OR p.id IN (
-        SELECT id FROM prospects ORDER BY created_at DESC, rowid DESC LIMIT 100
-      )
-      ORDER BY (o.paid_at IS NOT NULL AND o.delivered_at IS NULL) DESC, p.created_at DESC, p.rowid DESC
-    `)).rows.map(hydrate),
+    async list(page = 1) {
+      const { rows } = await execute(`SELECT p.id, p.share_token, o.paid_at, o.delivered_at,
+        (SELECT json_extract(f.value, '$.value') FROM json_each(p.payload, '$.facts') f
+          WHERE json_extract(f.value, '$.field') = 'name' LIMIT 1) AS name
+        FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
+        ORDER BY (o.paid_at IS NOT NULL AND o.delivered_at IS NULL) DESC, p.created_at DESC, p.rowid DESC
+        LIMIT ? OFFSET ?`, [pageSize + 1, (page - 1) * pageSize]);
+      return { leads: rows.slice(0, pageSize), hasNext: rows.length > pageSize };
+    },
+    async counts() {
+      const { rows } = await execute(`SELECT
+        count(CASE WHEN p.share_token IS NULL THEN 1 END) AS drafts,
+        count(CASE WHEN p.share_token IS NOT NULL AND o.paid_at IS NULL THEN 1 END) AS shared,
+        count(CASE WHEN o.paid_at IS NOT NULL AND o.delivered_at IS NULL THEN 1 END) AS queued,
+        count(o.delivered_at) AS delivered
+        FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id`);
+      return rows[0];
+    },
+    async hasBusiness(key) {
+      return (await execute('SELECT 1 FROM prospects WHERE business_key = ?', [key])).rows.length > 0;
+    },
     find,
     publicLead: async token => /^[A-Za-z0-9_-]{32}$/.test(token) &&
       hydrate((await execute(select + ' WHERE p.share_token = ?', [token])).rows[0]),
