@@ -81,6 +81,27 @@ test('duplicate orders converge, stale checkout cannot fulfill, and receipt pers
   assert.ok(receipt.delivered_at);
 });
 
+test('older paid orders stay visible after 100 new prospects', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = makeDemoProspect();
+  const id = await db.save(input);
+  await db.release(id, 1);
+  const { share_token: token } = await db.find(id);
+  const { attempt } = await db.reserveAttempt(id, token);
+  for (let index = 0; index < 100; index++) {
+    await db.save({ ...input, businessUrl: `https://example.com/prospect/${index}` });
+  }
+  assert.equal((await db.list()).length, 100);
+  assert.ok(await db.pay({
+    id, attempt, sessionId: 'old-order', amount: price, currency: 'USD',
+    version: offerVersion, provider: 'demo',
+  }));
+  assert.equal((await db.list())[0].id, id);
+  await db.markDelivered(id);
+  assert.ok((await db.list()).find(lead => lead.id === id)?.delivered_at);
+});
+
 test('only signed, paid Stripe sandbox events can become order candidates', () => {
   const oldKey = process.env.STRIPE_SECRET_KEY;
   const oldWebhook = process.env.STRIPE_WEBHOOK_SECRET;

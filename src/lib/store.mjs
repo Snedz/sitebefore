@@ -30,7 +30,12 @@ export async function createStore(config) {
   const find = async id => hydrate((await execute(select + ' WHERE p.id = ?', [id])).rows[0]);
   return {
     close: () => db.close(),
-    list: async () => (await execute(select + ' ORDER BY p.created_at DESC LIMIT 100')).rows.map(hydrate),
+    list: async () => (await execute(select + `
+      WHERE o.paid_at IS NOT NULL OR p.id IN (
+        SELECT id FROM prospects ORDER BY created_at DESC, rowid DESC LIMIT 100
+      )
+      ORDER BY (o.paid_at IS NOT NULL AND o.delivered_at IS NULL) DESC, p.created_at DESC, p.rowid DESC
+    `)).rows.map(hydrate),
     find,
     publicLead: async token => /^[A-Za-z0-9_-]{32}$/.test(token) &&
       hydrate((await execute(select + ' WHERE p.share_token = ?', [token])).rows[0]),
