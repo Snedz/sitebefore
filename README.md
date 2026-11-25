@@ -9,7 +9,7 @@ SiteBefore sells one-page websites to local businesses using a preview-first, no
 
 ## Run the pilot locally
 
-Use Node 22.12 or later. Keep the generated operator key for the current session.
+Use Node 22.23.4 or later. Keep the generated operator key for the current session.
 
 ```sh
 npm ci
@@ -30,7 +30,7 @@ The Vercel build uses on-demand Astro routes for the workspace and preview while
 | --- | --- |
 | `SITEBEFORE_OPERATOR_KEY` | High-entropy, operator-only key (at least 32 characters). Rotating it invalidates operator sessions. |
 | `SITEBEFORE_DB_URL`, `SITEBEFORE_DB_TOKEN` | Authenticated libSQL database scoped to this review environment. The app initializes its pilot tables on first use. |
-| `SITEBEFORE_ORIGIN` | Exact HTTPS origin for checkout callbacks. Use the fixed review hostname. |
+| `SITEBEFORE_ORIGIN` | Exact HTTPS origin for buyer links and checkout callbacks. Use the fixed review hostname. |
 | `STRIPE_SECRET_KEY` | Stripe sandbox restricted key with Checkout Session permissions. The app also accepts a sandbox secret key. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for `/api/stripe-webhook` on the same sandbox account. Register `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`. |
 
