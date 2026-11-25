@@ -3,9 +3,10 @@ import { getStore } from '../../lib/store.mjs';
 import { WorkflowError } from '../../lib/prospect.mjs';
 import { makeDemoProspect } from '../../data/demo-prospect.mjs';
 import { checkoutMode } from '../../lib/checkout.mjs';
+import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
 
 export const prerender = false;
-export async function POST({ request, cookies }) {
+export async function POST({ request, cookies, url }) {
   let id;
   try {
     sameOrigin(request);
@@ -45,7 +46,7 @@ export async function POST({ request, cookies }) {
       case 'delivered': await store.markDelivered(id); break;
       default: throw new WorkflowError('Unknown action.');
     }
-    return privateRedirect('/agency/' + (id ? '?lead=' + id : ''));
+    return privateRedirect(agencyPath(agencyPage(url.searchParams.get('page')), id));
   } catch (err) {
     if (err instanceof WorkflowError && err.status === 401) return privateRedirect('/agency/?notice=signin');
     if (err instanceof WorkflowError && err.status < 500 && isOperator(cookies)) {

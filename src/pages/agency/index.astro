@@ -5,14 +5,14 @@ import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
 import { displayPrice } from '../../lib/offer.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
+import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
 export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
 const operator = isOperator(Astro.cookies);
 const enabled = operatorKey();
-const requestedPage = Number(Astro.url.searchParams.get('page'));
-const page = Number.isInteger(requestedPage) && requestedPage > 0 && requestedPage <= 1_000_000
-  ? requestedPage : 1;
+const page = agencyPage(Astro.url.searchParams.get('page'));
+const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
   selected,
   counts,
@@ -44,12 +44,6 @@ const stats = [
   ['Launch queue', counts?.queued],
   ['Delivered', counts?.delivered],
 ];
-function workspaceLink(listPage, id, anchor) {
-  const query = new URLSearchParams();
-  if (listPage > 1) query.set('page', String(listPage));
-  if (id) query.set('lead', id);
-  return '/agency/' + (query.size ? '?' + query : '') + '#' + anchor;
-}
 const name = selected && prospectSummary(selected).name;
 const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
 const previewURL = previewPath && new URL(previewPath, checkoutOrigin() ?? Astro.url.origin).href;
@@ -147,7 +141,7 @@ function stage(lead) {
                 <div class="list-head">
                   <h2>Prospects</h2>
                   {showDemo && (
-                      <form method="post" action="/api/agency">
+                      <form method="post" action={prospectAction}>
                         <button class="button outline" name="action" value="seed">
                           Add fictional demo
                         </button>
@@ -159,7 +153,7 @@ function stage(lead) {
                     {leads.map((lead) => (
                       <li>
                         <a
-                          href={workspaceLink(page, lead.id, 'dossier')}
+                          href={agencyPath(page, lead.id) + '#dossier'}
                           aria-current={selected?.id === lead.id ? 'page' : undefined}
                         >
                           <strong>{lead.name}</strong>
@@ -173,8 +167,8 @@ function stage(lead) {
                 )}
                 {(page > 1 || hasNext) && (
                   <nav class="list-head" aria-label="Prospect pages">
-                    {page > 1 && <a href={workspaceLink(page - 1, selected?.id, 'prospects')}>Previous page</a>}
-                    {hasNext && <a href={workspaceLink(page + 1, selected?.id, 'prospects')}>Next page</a>}
+                    {page > 1 && <a href={agencyPath(page - 1, selected?.id) + '#prospects'}>Previous page</a>}
+                    {hasNext && <a href={agencyPath(page + 1, selected?.id) + '#prospects'}>Next page</a>}
                   </nav>
                 )}
               </section>
@@ -214,7 +208,7 @@ function stage(lead) {
                         Open internal draft ↗
                       </a>
                     </p>
-                    <form class="stack" method="post" action="/api/agency">
+                    <form class="stack" method="post" action={prospectAction}>
                       <input type="hidden" name="id" value={selected.id} />
                       <input type="hidden" name="revision" value={selected.revision} />
                       <label class="confirm">
@@ -249,7 +243,7 @@ function stage(lead) {
                           Order reference <code>{selected.receipt_id}</code>
                         </small>
                         {!selected.delivered_at && (
-                          <form method="post" action="/api/agency">
+                          <form method="post" action={prospectAction}>
                             <input type="hidden" name="id" value={selected.id} />
                             <button class="button" name="action" value="delivered">
                               Mark delivered
@@ -271,7 +265,7 @@ function stage(lead) {
                           >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
                         </details>
                         {!selected.attempt && (
-                          <form method="post" action="/api/agency">
+                          <form method="post" action={prospectAction}>
                             <input type="hidden" name="id" value={selected.id} />
                             <button class="button outline" name="action" value="revoke">
                               Revoke share link
@@ -282,7 +276,7 @@ function stage(lead) {
                     )}
                   </>
                 ) : (
-                  <form class="stack" method="post" action="/api/agency">
+                  <form class="stack" method="post" action={prospectAction}>
                     {selected && (
                       <>
                         <input type="hidden" name="id" value={selected.id} />
