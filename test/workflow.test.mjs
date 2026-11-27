@@ -9,7 +9,7 @@ import { createStore } from '../src/lib/store.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { offerVersion, price } from '../src/lib/offer.mjs';
-import { checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
+import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
 import { readForm } from '../src/lib/http.mjs';
 
 test('checkout and published links can share one valid configured origin', () => {
@@ -173,8 +173,13 @@ test('only signed, paid Stripe sandbox events can become order candidates', () =
   const oldKey = process.env.STRIPE_SECRET_KEY;
   const oldWebhook = process.env.STRIPE_WEBHOOK_SECRET;
   try {
-    process.env.STRIPE_SECRET_KEY = 'sk_test_fixture';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_fixture';
+    for (const prefix of ['sk', 'rk', 'rkcs']) {
+      process.env.STRIPE_SECRET_KEY = prefix + '_live_fixture';
+      assert.equal(checkoutMode(), null);
+      process.env.STRIPE_SECRET_KEY = prefix + '_test_fixture';
+      assert.equal(checkoutMode(), 'stripe-test');
+    }
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const session = {
       id: 'cs_test_fixture', livemode: false, mode: 'payment', currency: 'usd', amount_total: price,

@@ -7,7 +7,7 @@ export function checkoutMode() {
       !process.env.SITEBEFORE_DB_URL) return 'demo';
   const key = process.env.STRIPE_SECRET_KEY ?? '';
   const webhook = process.env.STRIPE_WEBHOOK_SECRET ?? '';
-  if (/^(sk|rk)_test_/.test(key) && webhook.startsWith('whsec_')) return 'stripe-test';
+  if (/^(sk|rk|rkcs)_test_/.test(key) && webhook.startsWith('whsec_')) return 'stripe-test';
   return null;
 }
 const stripeClient = () => new Stripe(process.env.STRIPE_SECRET_KEY, { maxNetworkRetries: 2 });
