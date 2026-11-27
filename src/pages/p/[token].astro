@@ -45,6 +45,7 @@ const status = Astro.url.searchParams.get('checkout');
                 ? 'SiteBefore marked this order delivered.'
                 : 'Your order is in the launch queue. Keep this link for updates.'}
             </p>
+            {lead.site_url && <a href={lead.site_url} rel="noreferrer">Open your published site</a>}
             <small>
               Order reference <code>{lead.receipt_id}</code>
             </small>

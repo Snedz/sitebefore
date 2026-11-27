@@ -242,11 +242,17 @@ function stage(lead) {
                         <small>
                           Order reference <code>{selected.receipt_id}</code>
                         </small>
-                        {!selected.delivered_at && (
-                          <form method="post" action={prospectAction}>
+                        {selected.site_url ? (
+                          <a href={selected.site_url} rel="noreferrer">Open published site</a>
+                        ) : (
+                          <form class="stack" method="post" action={prospectAction}>
                             <input type="hidden" name="id" value={selected.id} />
+                            <label class="stack">
+                              Published site URL
+                              <input name="site_url" type="url" maxlength="1000" placeholder="https://your-business.com" required />
+                            </label>
                             <button class="button" name="action" value="delivered">
-                              Mark delivered
+                              {selected.delivered_at ? 'Save site URL' : 'Mark delivered'}
                             </button>
                           </form>
                         )}

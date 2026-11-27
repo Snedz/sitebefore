@@ -43,7 +43,7 @@ export async function POST({ request, cookies, url }) {
         await store.release(id, revision);
         break;
       case 'revoke': await store.revoke(id); break;
-      case 'delivered': await store.markDelivered(id); break;
+      case 'delivered': await store.markDelivered(id, form.get('site_url')); break;
       default: throw new WorkflowError('Unknown action.');
     }
     return privateRedirect(agencyPath(agencyPage(url.searchParams.get('page')), id));

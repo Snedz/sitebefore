@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { createClient } from '@libsql/client';
 import Stripe from 'stripe';
 import { createStore } from '../src/lib/store.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
@@ -64,7 +65,7 @@ test('approval binds to the reviewed revision and revoking reopens the draft', a
 
 test('duplicate orders converge, stale checkout cannot fulfill, and receipt persists', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'sitebefore-test-'));
-  const url = 'file:' + join(directory, 'orders.db');
+const url = 'file:' + join(directory, 'orders.db');
   let db = await createStore({ url });
   t.after(() => { db.close(); rmSync(directory, { recursive: true, force: true }); });
   const input = makeDemoProspect();
@@ -83,16 +84,60 @@ test('duplicate orders converge, stale checkout cannot fulfill, and receipt pers
   assert.equal(await db.pay({ ...order, attempt: started.attempt, sessionId: 'old' }), false);
   assert.equal(await db.pay({ ...order, amount: 1 }), false);
   assert.equal(await db.pay({ ...order, currency: 'CAD' }), false);
-  await assert.rejects(db.markDelivered(id), /paid/);
+  const siteUrl = 'https://shop.example.com/';
+  await assert.rejects(db.markDelivered(id, siteUrl), /paid/);
   assert.deepEqual(await Promise.all([db.pay(order), db.pay(order)]), [true, true]);
   assert.equal(await db.pay({ ...order, sessionId: 'other' }), false);
   await db.recordSession(id, current.attempt, 'new');
-  await db.markDelivered(id);
+  for (const invalid of ['', 'http://shop.example.com/', 'https:shop.example.com',
+    'https://operator:secret@shop.example.com/', siteUrl + '?token=test-only', siteUrl + '#fragment']) {
+    await assert.rejects(db.markDelivered(id, invalid), /HTTPS/);
+  }
+  assert.equal((await db.publicLead(token)).delivered_at, null);
+  assert.equal((await db.publicLead(token)).site_url, null);
+  await Promise.all([db.markDelivered(id, 'https://SHOP.example.com'), db.markDelivered(id, siteUrl)]);
+  const { delivered_at: deliveredAt } = await db.publicLead(token);
+  await assert.rejects(db.markDelivered(id, 'https://other.example.com/'), /already been recorded/);
   db.close();
   db = await createStore({ url });
   const receipt = await db.publicLead(token);
   assert.equal(receipt.receipt_id, 'new');
-  assert.ok(receipt.delivered_at);
+  assert.ok(deliveredAt);
+  assert.equal(receipt.delivered_at, deliveredAt);
+  assert.equal(receipt.site_url, siteUrl);
+});
+
+test('an older delivered order can add its published site without changing the receipt date', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'sitebefore-legacy-'));
+  const url = 'file:' + join(directory, 'orders.db');
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const db = await createStore({ url });
+  const id = await db.save(makeDemoProspect());
+  await db.release(id, 1);
+  const { share_token: token } = await db.find(id);
+  const { attempt } = await db.reserveAttempt(id, token);
+  assert.ok(await db.pay({
+    id, attempt, sessionId: 'legacy-order', amount: price, currency: 'USD',
+    version: offerVersion, provider: 'demo',
+  }));
+  db.close();
+
+  const legacy = createClient({ url });
+  const deliveredAt = '2025-01-01T12:00:00.000Z';
+  await legacy.batch([
+    'DROP TABLE order_deliveries',
+    { sql: 'UPDATE orders SET delivered_at = ? WHERE prospect_id = ?', args: [deliveredAt, id] },
+  ], 'write');
+  legacy.close();
+
+  const upgraded = await createStore({ url });
+  t.after(() => upgraded.close());
+  const receipt = await upgraded.publicLead(token);
+  assert.equal(receipt.delivered_at, deliveredAt);
+  assert.equal(receipt.site_url, null);
+  await upgraded.markDelivered(id, 'https://shop.example.com/');
+  assert.equal((await upgraded.publicLead(token)).delivered_at, deliveredAt);
+  assert.equal((await upgraded.publicLead(token)).site_url, 'https://shop.example.com/');
 });
 
 test('older paid orders stay visible after 100 new prospects', async t => {
@@ -116,7 +161,7 @@ test('older paid orders stay visible after 100 new prospects', async t => {
   }));
   assert.equal((await db.list()).leads[0].id, id);
   assert.equal((await db.counts()).queued, 1);
-  await db.markDelivered(id);
+  await db.markDelivered(id, 'https://shop.example.com/');
   const history = await db.list(2);
   assert.equal(history.leads[0].id, id);
   assert.ok(history.leads[0].delivered_at);

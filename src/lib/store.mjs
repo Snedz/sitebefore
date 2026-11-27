@@ -16,13 +16,28 @@ const schema = [
     amount INTEGER NOT NULL, currency TEXT NOT NULL, provider TEXT NOT NULL,
     paid_at TEXT NOT NULL, delivered_at TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS order_deliveries (
+    prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
+  )`,
 ];
 
 const now = () => new Date().toISOString();
 const hydrate = row => row && ({ ...row, data: JSON.parse(String(row.payload)) });
-const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id
-  FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id`;
+const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id, d.site_url
+  FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
+  LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id`;
 const pageSize = 100;
+
+function deliveryUrl(value) {
+  const invalid = () => new WorkflowError('Enter the published site’s HTTPS URL without credentials or URL parameters.');
+  if (typeof value !== 'string' || value.length > 1000) throw invalid();
+  const input = value.trim();
+  if (!/^https:\/\/[^/]/i.test(input) || /[\s\\?#]/u.test(input)) throw invalid();
+  let url;
+  try { url = new URL(input); } catch { throw invalid(); }
+  if (url.protocol !== 'https:' || url.username || url.password) throw invalid();
+  return url.href;
+}
 
 export async function createStore(config) {
   const db = createClient(config);
@@ -111,9 +126,25 @@ export async function createStore(config) {
       if (inserted.rowsAffected) return true;
       return (await find(id))?.receipt_id === sessionId;
     },
-    async markDelivered(id) {
-      const saved = await execute(`UPDATE orders SET delivered_at = COALESCE(delivered_at, ?) WHERE prospect_id = ?`, [now(), id]);
-      if (!saved.rowsAffected) throw new WorkflowError('An order must be paid before delivery.', 409);
+    async markDelivered(id, siteUrl) {
+      const url = deliveryUrl(siteUrl);
+      const [, saved, order] = await db.batch([
+        {
+          sql: `INSERT INTO order_deliveries (prospect_id, site_url)
+            SELECT prospect_id, ? FROM orders WHERE prospect_id = ?
+            ON CONFLICT(prospect_id) DO NOTHING`,
+          args: [url, id],
+        },
+        {
+          sql: `UPDATE orders SET delivered_at = COALESCE(delivered_at, ?) WHERE prospect_id = ?
+            AND EXISTS (SELECT 1 FROM order_deliveries WHERE prospect_id = orders.prospect_id AND site_url = ?)`,
+          args: [now(), id, url],
+        },
+        { sql: 'SELECT 1 FROM orders WHERE prospect_id = ?', args: [id] },
+      ], 'write');
+      if (saved.rowsAffected) return;
+      if (!order.rows.length) throw new WorkflowError('An order must be paid before delivery.', 409);
+      throw new WorkflowError('A different site URL has already been recorded for this order.', 409);
     },
   };
 }
