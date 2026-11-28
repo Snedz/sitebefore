@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Brand from '../components/Brand.astro';
-import { currentOffer, displayPrice } from '../lib/offer.mjs';
+import { currentOffer, offerTerms, offersForApproval } from '../lib/offer.mjs';
 import sample from '../data/juniper.json';
 const steps = [
   ['Open your private link', 'Look through the site we built for your business on your phone or computer.'],
@@ -12,7 +12,7 @@ const steps = [
 
 <Base
   title="SiteBefore — See your new website before you buy it"
-  description="See a website built for your local business before you buy it. One fixed price, online checkout and a launch handoff."
+  description="See a website built for your local business before you buy it. One-time and monthly launch offers, online checkout and a launch handoff."
   canonical="https://www.sitebefore.com/"
   image={`https://www.sitebefore.com${sample.hero}`}
 >
@@ -30,7 +30,7 @@ const steps = [
         <p class="eyebrow">Websites for local businesses</p>
         <h1>See it before<br /> <em>you buy it.</em></h1>
       </div>
-      <p>We build a website around your business and send you a private preview. If you want to keep it, you can buy it online for one fixed price.</p>
+      <p>We build a website around your business and send you a private preview. See the launch offer on your preview and check out online if you want to keep it.</p>
     </section>
 
     <section class="wrap specimen" aria-labelledby="sample-title">
@@ -59,8 +59,9 @@ const steps = [
       <div class="wrap package-inner">
         <div>
           <p class="eyebrow">Launch package</p>
-          <h2>{displayPrice()}</h2>
-          <p>{displayPrice('CAD')} for Canadian businesses. One-time payment.</p>
+          <h2>Launch offers</h2>
+          <ul>{offersForApproval().map(offer => <li>{offerTerms(offer)}</li>)}</ul>
+          <p>Canadian businesses see the same amounts in CAD. Your private preview shows the offer for your business.</p>
         </div>
         <div>
           <ul>{currentOffer.scope.map((item) => <li>{item}</li>)}</ul>

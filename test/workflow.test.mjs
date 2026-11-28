@@ -8,8 +8,8 @@ import Stripe from 'stripe';
 import { createStore } from '../src/lib/store.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
-import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
-import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
+import { currentOffer, launchOffer, monthlyOffer } from '../src/lib/offer.mjs';
+import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, stripeCheckoutParams, verifyWebhook } from '../src/lib/checkout.mjs';
 import { readForm } from '../src/lib/http.mjs';
 
 const { version: offerVersion, amount: price } = currentOffer;
@@ -302,4 +302,62 @@ test('only signed, paid Stripe sandbox events can become order candidates', () =
     if (oldWebhook === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
     else process.env.STRIPE_WEBHOOK_SECRET = oldWebhook;
   }
+});
+
+test('Stripe Checkout and an initial paid session use the frozen terms of either offer', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const oldKey = process.env.STRIPE_SECRET_KEY;
+  const oldWebhook = process.env.STRIPE_WEBHOOK_SECRET;
+  t.after(() => {
+    if (oldKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = oldKey;
+    if (oldWebhook === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+    else process.env.STRIPE_WEBHOOK_SECRET = oldWebhook;
+  });
+  process.env.STRIPE_SECRET_KEY = 'sk_test_fixture';
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_fixture';
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  for (const [offer, mode, currency] of [[currentOffer, 'payment', 'USD'], [monthlyOffer, 'subscription', 'CAD']]) {
+    const input = { ...makeDemoProspect(), currency, businessUrl: 'https://example.com/' + mode };
+    const id = await db.save(input);
+    await db.release(id, 1, offer.version);
+    await db.release(id, 1, offer === monthlyOffer ? currentOffer.version : monthlyOffer.version);
+    const { share_token: token } = await db.find(id);
+    const lead = await db.reserveAttempt(id, token);
+    assert.deepEqual(lead.offer, offer);
+    const params = stripeCheckoutParams(lead, '/p/' + token + '/', 'https://example.com');
+    assert.equal(params.mode, mode);
+    const [item] = params.line_items;
+    assert.equal(item.quantity, 1);
+    assert.equal(item.price_data.unit_amount, offer === monthlyOffer ? 4900 : 59900);
+    assert.equal(item.price_data.currency, currency.toLowerCase());
+    assert.deepEqual(item.price_data.recurring, offer === monthlyOffer ? { interval: 'month' } : undefined);
+    assert.deepEqual(params.metadata, { prospect_id: id, attempt: lead.attempt, offer_version: offer.version });
+    const session = {
+      id: 'cs_test_' + mode, livemode: false, mode, currency: item.price_data.currency,
+      amount_total: item.price_data.unit_amount, payment_status: 'paid', metadata: params.metadata,
+    };
+    const parsePaid = checkout => {
+      const payload = JSON.stringify({ type: 'checkout.session.completed', livemode: false, data: { object: checkout } });
+      const header = stripe.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
+      return paymentFromEvent(verifyWebhook(payload, header));
+    };
+    await db.recordSession(id, lead.attempt, session.id);
+    const payment = parsePaid(session);
+    assert.equal(await db.pay({ ...payment, mode: mode === 'payment' ? 'subscription' : 'payment' }), false);
+    assert.equal(await db.pay({ ...payment, amount: 1 }), false);
+    assert.equal(await db.pay({ ...payment, currency: currency === 'USD' ? 'CAD' : 'USD' }), false);
+    assert.equal(await db.pay({ ...payment, version: 'wrong-version' }), false);
+    assert.equal((await db.find(id)).paid_at, null);
+    assert.ok(await db.pay(payment));
+    assert.equal((await db.find(id)).subscription_id, null);
+    const replay = parsePaid({ ...session, subscription: 'sub_fixture' });
+    assert.ok(await db.pay(replay));
+    assert.ok(await db.pay(replay));
+    const paid = await db.find(id);
+    assert.equal(paid.receipt_id, session.id);
+    assert.equal(paid.subscription_id, mode === 'subscription' ? 'sub_fixture' : null);
+  }
+  assert.equal((await db.counts()).queued, 2);
 });

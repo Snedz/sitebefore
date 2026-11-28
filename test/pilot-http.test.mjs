@@ -6,9 +6,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
-import { currentOffer, displayPrice } from '../src/lib/offer.mjs';
+import { currentOffer, displayPrice, monthlyOffer, offerTerms } from '../src/lib/offer.mjs';
 
-test('a fictional buyer can pay for an approved preview and receive the launch link', { timeout: 30_000 }, async t => {
+test('a fictional buyer can pay for an approved preview and receive the launch link', { timeout: 30_000 }, t =>
+  rehearse(t, currentOffer, 'USD'));
+test('a fictional buyer can simulate a monthly payment and receive the launch link', { timeout: 30_000 }, t =>
+  rehearse(t, monthlyOffer, 'CAD'));
+
+async function rehearse(t, offer, currency) {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const scratch = mkdtempSync(join(tmpdir(), 'sitebefore-pilot-'));
   const originalCwd = process.cwd();
@@ -80,6 +85,7 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const originalDraft = await request(draftPath, 200, { cookie });
   assert.doesNotMatch(originalDraft.html, /href="tel:/);
   const dossier = makeDemoProspect();
+  dossier.currency = currency;
   const phone = '(214)\u00A0555\u20110142';
   const phoneLink = /href="tel:\+12145550142"/;
   const privateNote = 'Fixture phone evidence for operator review.';
@@ -91,15 +97,29 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const draft = await request(draftPath, 200, { cookie });
   assert.match(draft.html, phoneLink);
   assert.ok(!draft.html.includes(privateNote));
-  await agency({ action: 'release', id, revision: '2', verified: 'yes', offer_version: currentOffer.version });
+  const storefront = await request('/', 200);
+  assert.ok(storefront.html.includes('$599 USD one time'));
+  assert.ok(storefront.html.includes('$0 USD to publish + $49 USD/month, cancel anytime'));
+  const approval = await request(seeded.location, 200, { cookie });
+  assert.match(approval.html, /name="offer_version" value="launch-v1" checked/);
+  assert.match(approval.html, /name="offer_version" value="launch-monthly-v1" required/);
+  const release = { action: 'release', id, revision: '2', verified: 'yes', offer_version: offer.version };
+  await request('/api/agency', 409, { cookie, form: { ...release, offer_version: 'unknown-version' } });
+  await agency(release);
   const approved = await request(seeded.location, 200, { cookie });
   const previewPath = approved.html.match(/\/p\/[A-Za-z0-9_-]{32}\//)?.[0];
   assert.ok(previewPath, 'Agency OS shows the approved buyer link');
   const token = previewPath.split('/')[2];
   const preview = await request(previewPath, 200);
   assert.match(preview.headers.get('x-robots-tag') ?? '', /noindex/);
-  assert.ok(preview.html.includes(displayPrice('USD')));
+  assert.ok(preview.html.includes(displayPrice(currency, offer.amount)));
   assert.ok(preview.html.includes(currentOffer.scope[0]));
+  if (offer === monthlyOffer) {
+    assert.ok(preview.html.includes('$0 CAD to publish + $49 CAD/month, cancel anytime'));
+    assert.doesNotMatch(preview.html, /\$599/);
+  } else {
+    assert.doesNotMatch(preview.html, /\$49|cancel anytime/);
+  }
   assert.match(preview.html, /Start test checkout/);
   assert.match(preview.html, phoneLink);
   assert.match(preview.html, /Call the business/);
@@ -117,6 +137,7 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const receipt = await request(previewPath, 200);
   const receiptReference = /Order reference\s*<code\b[^>]*>([^<]+)<\/code>/;
   assert.match(receipt.html, /Simulated payment received/);
+  assert.ok(receipt.html.includes('Plan: ' + offerTerms(offer, currency)));
   const reference = receipt.html.match(receiptReference)?.[1];
   assert.ok(reference, 'Payment creates a buyer receipt');
   assert.doesNotMatch(receipt.html, /Open your published site/);
@@ -128,4 +149,4 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(delivered.html, /marked this order delivered/);
   assert.ok(delivered.html.includes(`href="${site}"`));
   assert.equal(delivered.html.match(receiptReference)?.[1], reference);
-});
+}

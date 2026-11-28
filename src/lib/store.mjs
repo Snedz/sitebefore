@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeProspect, checkFreshness, publicProfile, WorkflowError } from './prospect.mjs';
-import { currentOffer, launchOffer } from './offer.mjs';
+import { checkoutModeForOffer, currentOffer, launchOffer, offersForApproval } from './offer.mjs';
 
 const schema = [
   `CREATE TABLE IF NOT EXISTS prospects (
@@ -19,18 +19,22 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS order_deliveries (
     prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS order_subscriptions (
+    prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), subscription_id TEXT NOT NULL
+  )`,
 ];
 
 const now = () => new Date().toISOString();
-const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id, d.site_url
+const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id, d.site_url, s.subscription_id
   FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
-  LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id`;
+  LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id
+  LEFT JOIN order_subscriptions s ON o.prospect_id = s.prospect_id`;
 const pageSize = 100;
 
 function matchesCheckout(lead, event) {
   return lead?.share_token && lead.attempt === event.attempt &&
     lead.offer.amount === event.amount && lead.offer.version === event.version &&
-    lead.data.currency === event.currency;
+    lead.data.currency === event.currency && checkoutModeForOffer(lead.offer) === (event.mode ?? 'payment');
 }
 
 function deliveryUrl(value) {
@@ -102,14 +106,15 @@ export async function createStore(config, offer = currentOffer) {
       const lead = await find(id);
       if (!lead) throw new WorkflowError('Prospect not found.', 404);
       if (lead.share_token) return;
-      if (reviewedOfferVersion !== offer.version) {
+      const approvedOffer = offersForApproval(offer).find(candidate => candidate.version === reviewedOfferVersion);
+      if (!approvedOffer) {
         throw new WorkflowError('The offer changed. Reload and review the new terms before approving.', 409);
       }
       checkFreshness(lead.data.facts);
       const saved = await execute(`UPDATE prospects
         SET share_token = ?, approved_at = ?, payload = json_set(payload, '$.offer', json(?))
         WHERE id = ? AND share_token IS NULL AND revision = ?`,
-        [randomBytes(24).toString('base64url'), now(), JSON.stringify(offer), id, revision]);
+        [randomBytes(24).toString('base64url'), now(), JSON.stringify(approvedOffer), id, revision]);
       if (!saved.rowsAffected) throw new WorkflowError('This prospect changed. Reload and review the evidence again.', 409);
     },
     async revoke(id) {
@@ -141,12 +146,24 @@ export async function createStore(config, offer = currentOffer) {
       // The offer is immutable once an attempt starts. The insert still checks
       // the attempt in case Stripe expired it while the webhook was in flight.
       if (!matchesCheckout(await find(id), event)) return false;
-      const inserted = await execute(`INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
-        SELECT id, ?, ?, ?, ?, ? FROM prospects
-        WHERE id = ? AND attempt = ? AND share_token IS NOT NULL
-          AND json_extract(payload, '$.currency') = ? AND (checkout_id = ? OR checkout_id IS NULL)
-        ON CONFLICT(prospect_id) DO NOTHING`,
-        [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId]);
+      const statements = [{
+        sql: `INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
+          SELECT id, ?, ?, ?, ?, ? FROM prospects
+          WHERE id = ? AND attempt = ? AND share_token IS NOT NULL
+            AND json_extract(payload, '$.currency') = ? AND (checkout_id = ? OR checkout_id IS NULL)
+          ON CONFLICT(prospect_id) DO NOTHING`,
+        args: [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId],
+      }];
+      if (event.mode === 'subscription' && event.subscriptionId && provider === 'stripe-test') {
+        statements.push({
+          sql: `INSERT INTO order_subscriptions (prospect_id, subscription_id)
+            SELECT o.prospect_id, ? FROM orders o JOIN prospects p ON p.id = o.prospect_id
+            WHERE o.prospect_id = ? AND o.checkout_id = ? AND o.provider = ? AND p.attempt = ?
+            ON CONFLICT(prospect_id) DO NOTHING`,
+          args: [event.subscriptionId, id, sessionId, provider, attempt],
+        });
+      }
+      const [inserted] = await db.batch(statements, 'write');
       if (inserted.rowsAffected) return true;
       const paid = await find(id);
       return paid?.receipt_id === sessionId && paid.provider === provider && paid.attempt === attempt;
