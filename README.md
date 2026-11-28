@@ -26,6 +26,8 @@ A `service` fact can also include a `description` of up to 250 characters explai
 
 Approving a preview also saves the quoted price and package scope. Existing buyer links keep those terms through checkout and delivery. If the offer changes while reviewing an open draft, reload the draft before approving it.
 
+`npm test` includes a local HTTP rehearsal with the fictional prospect and a temporary database. It checks preview approval, checkout cancellation and retry, and the buyer receipt after delivery.
+
 ## Hosted review
 
 The Vercel build uses on-demand Astro routes for the workspace and preview while keeping the storefront static. Set these in the review environment. A review can show the storefront and sample without any configuration.
