@@ -84,12 +84,12 @@ export function checkFreshness(facts, now = Date.now()) {
 export function publicProfile(prospect) {
   const services = new Map();
   for (const { field, value, description } of prospect.facts) {
-    if (field === 'service' && (!services.has(value) || !services.get(value).description)) {
-      services.set(value, { name: value, description });
-    }
+    if (field !== 'service') continue;
+    if (!services.has(value)) services.set(value, new Set());
+    if (description) services.get(value).add(description);
   }
   return {
     ...Object.fromEntries(prospect.facts.filter(item => item.field !== 'service').map(item => [item.field, item.value])),
-    services: [...services.values()],
+    services: Array.from(services, ([name, descriptions]) => ({ name, descriptions: [...descriptions] })),
   };
 }

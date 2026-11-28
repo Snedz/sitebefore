@@ -63,10 +63,10 @@ const shopName = sample ? 'Juniper' : profile.name;
           </div>
         ) : (
           <ul class="service-list">
-            {profile.services.map(({ name, description }) => (
+            {profile.services.map(({ name, descriptions }) => (
               <li>
                 {name}
-                {description && <p>{description}</p>}
+                {descriptions.map(description => <p>{description}</p>)}
               </li>
             ))}
           </ul>
