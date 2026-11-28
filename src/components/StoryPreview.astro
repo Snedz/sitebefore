@@ -5,6 +5,8 @@ import Brand from './Brand.astro';
 import { businessPhoneLink } from '../lib/prospect.mjs';
 const { profile, sample = false, contactUrl } = Astro.props;
 const concerns = sample ? profile.concerns : null;
+const hero = sample ? profile.hero : null;
+const craft = sample ? profile.craft : null;
 const shopName = sample ? 'Juniper' : profile.name;
 const phoneLink = businessPhoneLink(profile.phone);
 const contactHref = phoneLink ?? contactUrl;
@@ -20,7 +22,7 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
     </div>
   </aside>
   <main id="main">
-    <div class="shop">
+    <div class:list={['shop', { dossier: !sample }]}>
       <header class="shop-header" id="shop">
         <div class="shop-wrap shop-nav">
           <a class="wordmark" href="#shop" aria-label={profile.name}>
@@ -33,7 +35,7 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
           </nav>
         </div>
       </header>
-      <section class:list={['work-hero', { illustrated: profile.hero }]}>
+      <section class:list={['work-hero', { illustrated: hero }]}>
         <div class="hero-content">
           <p class="label">{profile.trade} <span aria-hidden="true">/</span> {profile.location}</p>
           <h1>{profile.headline ?? profile.name}</h1>
@@ -43,14 +45,14 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
             <span aria-hidden="true">{contactHref ? '↗' : '↓'}</span>
           </a>
         </div>
-        {profile.hero && (
-          <img src={profile.hero} alt="Classic fastback parked in the Juniper workshop" width="1440" height="960" fetchpriority="high" />
+        {hero && (
+          <img src={hero} alt="Classic fastback parked in the Juniper workshop" width="1440" height="960" fetchpriority="high" />
         )}
       </section>
       <section class="shop-wrap services" id="services">
         <div class="section-intro">
           <p class="label">Services</p>
-          <h2>{concerns ? 'What brings you in?' : 'How we can help'}</h2>
+          <h2>{concerns ? 'What brings you in?' : 'Explore services'}</h2>
           {concerns && <p>Choose what you’re dealing with to see where to start.</p>}
         </div>
         {concerns ? (
@@ -66,11 +68,15 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
             ))}
           </div>
         ) : (
-          <ul class="service-list">
+          <ul class="choices service-choices">
             {profile.services.map(({ name, descriptions }) => (
               <li>
-                {name}
-                {descriptions.map(description => <p>{description}</p>)}
+                {descriptions.length ? (
+                  <details name="dossier-services">
+                    <summary>{name}</summary>
+                    <div class="answer">{descriptions.map(description => <p>{description}</p>)}</div>
+                  </details>
+                ) : <p class="service-name">{name}</p>}
               </li>
             ))}
           </ul>
@@ -78,8 +84,8 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
       </section>
       {profile.story && (
         <section class="story" id="workshop">
-          <div class:list={['shop-wrap story-grid', { 'has-image': profile.craft }]}>
-            {profile.craft && <img src={profile.craft} alt="Mechanic working under the hood of a classic car" width="1000" height="667" loading="lazy" />}
+          <div class:list={['shop-wrap story-grid', { 'has-image': craft }]}>
+            {craft && <img src={craft} alt="Mechanic working under the hood of a classic car" width="1000" height="667" loading="lazy" />}
             <div class="section-intro">
               <p class="label">{sample ? 'In the workshop' : 'About'}</p>
               <h2>{sample ? 'A careful look comes first.' : profile.name}</h2>
@@ -119,6 +125,26 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
     background: var(--shop-paper);
     color: var(--shop-black);
   }
+  .dossier {
+    --shop-black: #142522;
+    --shop-paper: #f2f4ea;
+    --shop-rust: #bce6bb;
+    --shop-display: 'Bricolage Grotesque Variable', sans-serif;
+  }
+  .dossier .work-hero { background: linear-gradient(120deg, var(--shop-black) 30%, #2b4c40); }
+  .dossier .hero-content h1 {
+    font-size: clamp(2.65rem, 7vw, 6.75rem);
+    line-height: 0.98;
+    text-transform: none;
+  }
+  .dossier .section-intro h2 {
+    font-size: clamp(2.1rem, 4.55vw, 4.25rem);
+    line-height: 1.04;
+    text-transform: none;
+  }
+  .dossier .shop-button:hover { background: #d5f1cd; }
+  .dossier .story { background: #e0ebdf; }
+  .dossier .choices summary:hover, .dossier .choices details[open] summary { color: #2b6346; }
   .shop-wrap { width: min(1280px, calc(100% - 2 * clamp(20px, 5vw, 72px))); margin-inline: auto; }
   .shop-header, .work-hero, .shop-end { background: var(--shop-black); color: var(--shop-paper); }
   .shop-header { border-bottom: 1px solid #fff2; }
@@ -183,9 +209,9 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
     margin-block: 12px 16px;
   }
   .section-intro > p:last-child { max-width: 46ch; }
-  .choices, .service-list { border-top: 1px solid #aea599; }
-  .choices details, .service-list li { border-bottom: 1px solid #aea599; }
-  .choices summary, .service-list li {
+  .choices { border-top: 1px solid #aea599; }
+  .choices details, .service-name { border-bottom: 1px solid #aea599; }
+  .choices summary, .service-name {
     font: 700 clamp(1.3rem, 2.7vw, 1.9rem)/1.1 var(--shop-display);
     padding-block: 19px;
     overflow-wrap: anywhere;
@@ -197,8 +223,8 @@ const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
   .choices details[open] summary::after { transform: rotate(225deg); }
   .choices summary:hover, .choices details[open] summary, .answer .label { color: #8e341d; }
   .answer { display: grid; gap: 6px; padding: 0 8px 22px; max-width: 58ch; }
-  .service-list { margin: 0; padding: 0; list-style: none; }
-  .service-list p { font: 400 1rem/1.5 var(--body); margin-top: 8px; max-width: 55ch; }
+  .service-choices { margin: 0; padding: 0; list-style: none; }
+  .service-name { padding-inline: 8px; }
   .story { background: #e8dfd1; }
   .story-grid { display: grid; align-items: center; gap: clamp(24px, 5vw, 78px); }
   .story-grid.has-image { grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr); }

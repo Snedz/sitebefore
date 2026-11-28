@@ -79,7 +79,12 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const draftPath = '/agency/draft/' + id + '/';
   const originalDraft = await request(draftPath, 200, { cookie });
   assert.doesNotMatch(originalDraft.html, /href="tel:/);
+  assert.doesNotMatch(originalDraft.html, /<details name="dossier-services"/);
   const dossier = makeDemoProspect();
+  dossier.facts = dossier.facts.filter(fact => fact.field !== 'story');
+  const service = dossier.facts.find(fact => fact.field === 'service');
+  service.description = 'Inspect belts, hoses, fluids, and filters.';
+  service.excerpt += ' ' + service.description;
   const phone = '(214)\u00A0555\u20110142';
   const phoneLink = /href="tel:\+12145550142"/;
   const privateNote = 'Fixture phone evidence for operator review.';
@@ -89,6 +94,7 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   });
   await agency({ action: 'save', id, revision: '1', prospect: JSON.stringify(dossier) });
   const draft = await request(draftPath, 200, { cookie });
+  assert.match(draft.headers.get('x-robots-tag') ?? '', /noindex/);
   assert.match(draft.html, phoneLink);
   assert.ok(!draft.html.includes(privateNote));
   await agency({ action: 'release', id, revision: '2', verified: 'yes', offer_version: currentOffer.version });
@@ -104,6 +110,13 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(preview.html, phoneLink);
   assert.match(preview.html, /Call the business/);
   assert.ok(!preview.html.includes(privateNote));
+  for (const page of [draft, preview]) {
+    assert.match(page.html, /Private preview · Unaffiliated/);
+    assert.match(page.html, /<details name="dossier-services"[^>]*>\s*<summary[^>]*>Maintenance<\/summary>/);
+    assert.ok(page.html.includes(service.description));
+    assert.match(page.html, /<p class="service-name"[^>]*>Diagnostics<\/p>/);
+    assert.doesNotMatch(page.html, /id="workshop"|<img\b|juniper-(hero|craft)/);
+  }
 
   const checkout = form => request('/api/checkout', 303, { form: { token, ...form } });
   const started = await checkout();
