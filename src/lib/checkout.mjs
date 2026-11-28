@@ -69,8 +69,11 @@ function checkoutFromEvent(event, paymentStatus) {
 }
 
 export function paymentFromEvent(event) {
-  return ['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)
+  const payment = ['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)
     ? checkoutFromEvent(event, 'paid') : null;
+  const email = event.data?.object?.customer_details?.email;
+  return payment && typeof email === 'string' && email.length <= 254 && /^[^\s@,;<>"\\]+@[^\s@,;<>"\\]+\.[^\s@,;<>"\\]+$/.test(email)
+    ? { ...payment, buyerEmail: email } : payment;
 }
 
 export function failureFromEvent(event) {

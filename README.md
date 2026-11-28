@@ -41,6 +41,12 @@ The Vercel build uses on-demand Astro routes for the workspace and preview while
 | `SITEBEFORE_ORIGIN` | Exact HTTPS origin for buyer links and checkout callbacks. Use the fixed review hostname. |
 | `STRIPE_SECRET_KEY` | Stripe sandbox restricted key with Checkout Session permissions. The app also accepts a sandbox secret key. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for `/api/stripe-webhook` on the same sandbox account. Register `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`. |
+| `RESEND_API_KEY` | Optional Resend sending key scoped to the dedicated sandbox/test sending domain. |
+| `SITEBEFORE_EMAIL_FROM` | Optional verified sender, e.g. `SiteBefore <receipts@test-mail.example.com>` with your own sandbox/test sending domain. |
+
+Use a dedicated, verified Resend test sending domain or subdomain, separate from production mail. Keep open and click tracking disabled for that domain, and enter only an inbox you control during Stripe sandbox checkout. Leave either email variable unset to disable sending. Demo checkout does not send email.
+
+The signed paid webhook saves the Checkout customer email with the order and attempts a receipt using the fixed `SITEBEFORE_ORIGIN`. Marking the order delivered attempts a second email with the published URL. Agency OS shows whether each email was accepted by Resend, skipped, failed, or has an unconfirmed send. Email failures do not undo payment or delivery. Each kind is attempted at most once per order: replays do not resend, and a timeout or interrupted send is not retried automatically. Keep buyer addresses and receipt links private.
 
 On a protected Vercel preview, the browser sign-in and the Stripe webhook are separate requests. Configure an authorized sandbox webhook URL that can reach `/api/stripe-webhook` on the review deployment. When the project uses [Vercel Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation#other-webhook-services), store the generated URL only in the sandbox webhook configuration and keep Stripe signature verification enabled.
 
