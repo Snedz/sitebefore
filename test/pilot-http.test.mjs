@@ -133,7 +133,8 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const paidWorkspace = await request(seeded.location, 200, { cookie });
   assert.match(paidWorkspace.html, /Revoke share link/);
   assert.match(paidWorkspace.html, /No unmatched Stripe payments/);
-  await agency({ action: 'revoke', id });
+  await request('/api/agency', 409, { cookie, form: { action: 'revoke', id } });
+  await agency({ action: 'revoke', id, revision: '2' });
   const revoked = await request(previewPath, 410);
   assert.doesNotMatch(revoked.html, phoneLink);
   const receiptPath = revoked.html.match(/href="([^"]+\?receipt=1)"/)?.[1];

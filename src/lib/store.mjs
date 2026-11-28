@@ -151,13 +151,13 @@ export async function createStore(config, offer = currentOffer) {
         WHERE id = ? AND share_token = ? AND revision = ?`, [now(), id, lead.share_token, revision]);
       if (!saved.rowsAffected) throw new WorkflowError('This preview changed. Reload before extending it.', 409);
     },
-    async revoke(id) {
+    async revoke(id, revision) {
       const [, saved] = await db.batch([
         {
           sql: `INSERT INTO order_receipt_links (token, prospect_id)
             SELECT p.share_token, p.id FROM prospects p JOIN orders o ON o.prospect_id = p.id
-            WHERE p.id = ? AND p.share_token IS NOT NULL`,
-          args: [id],
+            WHERE p.id = ? AND p.revision = ? AND p.share_token IS NOT NULL`,
+          args: [id, revision],
         },
         {
           sql: `UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
@@ -166,11 +166,11 @@ export async function createStore(config, offer = currentOffer) {
                      CASE WHEN paid THEN attempt END, CASE WHEN paid THEN checkout_id END
               FROM (SELECT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?) AS paid)
             )
-            WHERE id = ? AND share_token IS NOT NULL`,
-          args: [id, id],
+            WHERE id = ? AND revision = ? AND share_token IS NOT NULL`,
+          args: [id, id, revision],
         },
       ], 'write');
-      if (!saved.rowsAffected) throw new WorkflowError('There is no preview link to revoke.', 409);
+      if (!saved.rowsAffected) throw new WorkflowError('This preview changed. Reload before revoking.', 409);
     },
     checkoutLead,
     async reserveAttempt(id, token) {

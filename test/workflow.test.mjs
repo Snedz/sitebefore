@@ -89,10 +89,19 @@ test('approval binds to the reviewed revision and revoking reopens the draft', a
   const approved = await db.find(id);
   assert.ok(await db.publicLead(approved.share_token));
   await assert.rejects(db.save(input, id, approved.revision), /approved/);
-  await db.revoke(id);
+  await db.revoke(id, approved.revision);
   assert.ok(!await db.publicLead(approved.share_token));
   await db.release(id, approved.revision + 1);
   assert.notEqual((await db.find(id)).share_token, approved.share_token);
+  const { share_token: newToken } = await db.find(id);
+  const { attempt } = await db.reserveAttempt(id, newToken);
+  await db.recordSession(id, attempt, 'new-checkout');
+  await assert.rejects(db.revoke(id, approved.revision), {
+    status: 409, message: 'This preview changed. Reload before revoking.',
+  });
+  const current = await db.publicLead(newToken);
+  assert.equal(current.attempt, attempt);
+  assert.equal(current.checkout_id, 'new-checkout');
 });
 
 test('an expired preview can be extended with fresh evidence, then revoked during checkout', async t => {
@@ -114,10 +123,10 @@ test('an expired preview can be extended with fresh evidence, then revoked durin
   assert.equal((await db.counts()).shared, 0);
   await assert.rejects(db.extend(id, 2), /changed/);
   await db.extend(id, 1);
-  const { attempt } = await db.reserveAttempt(id, token);
+  const { attempt, revision } = await db.reserveAttempt(id, token);
   assert.ok(await db.publicLead(token));
   await db.recordSession(id, attempt, 'revoked-checkout');
-  await db.revoke(id);
+  await db.revoke(id, revision);
   assert.ok(!await db.publicLead(token));
   assert.ok(!await db.publicReceipt(token));
   await assert.rejects(db.reserveAttempt(id, token), { status: 404 });
@@ -242,7 +251,7 @@ test('duplicate orders converge, stale checkout cannot fulfill, and receipt pers
   assert.ok(deliveredAt);
   assert.equal(receipt.delivered_at, deliveredAt);
   assert.equal(receipt.site_url, siteUrl);
-  await db.revoke(id);
+  await db.revoke(id, receipt.revision);
   assert.ok(!await db.publicLead(token));
   assert.equal((await db.find(id)).receipt_id, 'new');
   assert.equal((await db.publicReceipt(token)).site_url, siteUrl);
