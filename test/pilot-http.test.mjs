@@ -13,11 +13,13 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const scratch = mkdtempSync(join(tmpdir(), 'sitebefore-pilot-'));
   const originalCwd = process.cwd();
   const key = randomBytes(32).toString('hex');
+  const reviewerKey = randomBytes(32).toString('hex');
   const settings = {
     ASTRO_DISABLE_UPDATE_CHECK: 'true',
     ASTRO_TELEMETRY_DISABLED: '1',
     SITEBEFORE_DEMO_CHECKOUT: '1',
     SITEBEFORE_OPERATOR_KEY: key,
+    SITEBEFORE_OPERATORS: 'reviewer:' + reviewerKey,
     SITEBEFORE_DB_URL: undefined,
     SITEBEFORE_DB_TOKEN: undefined,
     SITEBEFORE_ORIGIN: undefined,
@@ -72,6 +74,10 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const signIn = await request('/api/agency', 303, { form: { action: 'sign-in', key } });
   const cookie = signIn.headers.get('set-cookie')?.split(';', 1)[0];
   assert.ok(cookie, 'Agency OS sets an operator session');
+  assert.match(cookie, /^sitebefore_operator=[A-Za-z0-9_-]{43}$/);
+  assert.match(signIn.headers.get('set-cookie'), /Max-Age=3600/i);
+  assert.match(signIn.headers.get('set-cookie'), /HttpOnly/i);
+  assert.match(signIn.headers.get('set-cookie'), /SameSite=Strict/i);
   const agency = form => request('/api/agency', 303, { form, cookie });
   const seeded = await agency({ action: 'seed' });
   const id = new URL(seeded.location, origin).searchParams.get('lead');
@@ -92,7 +98,17 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(draft.html, phoneLink);
   assert.ok(!draft.html.includes(privateNote));
   await agency({ action: 'release', id, revision: '2', verified: 'yes', offer_version: currentOffer.version });
+  const namedSignIn = await request('/api/agency', 303, { form: { action: 'sign-in', operator: 'reviewer', key: reviewerKey } });
+  const namedCookie = namedSignIn.headers.get('set-cookie')?.split(';', 1)[0];
+  assert.ok(namedCookie);
+  assert.notEqual(namedCookie, cookie);
+  const review = form => request('/api/agency', 303, { form, cookie: namedCookie });
+  assert.match((await request(seeded.location, 200, { cookie: namedCookie })).html, /Approved by operator/);
+  await review({ action: 'revoke', id });
+  assert.doesNotMatch((await request(seeded.location, 200, { cookie: namedCookie })).html, /Approved by operator/);
+  await review({ action: 'release', id, revision: '3', verified: 'yes', offer_version: currentOffer.version });
   const approved = await request(seeded.location, 200, { cookie });
+  assert.match(approved.html, /Approved by reviewer/);
   const previewPath = approved.html.match(/\/p\/[A-Za-z0-9_-]{32}\//)?.[0];
   assert.ok(previewPath, 'Agency OS shows the approved buyer link');
   const token = previewPath.split('/')[2];
@@ -128,4 +144,32 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(delivered.html, /marked this order delivered/);
   assert.ok(delivered.html.includes(`href="${site}"`));
   assert.equal(delivered.html.match(receiptReference)?.[1], reference);
+  assert.doesNotMatch(delivered.html, /Recent operator activity|Approved by reviewer/);
+
+  await request('/api/agency', 409, { cookie, form: { action: 'revoke', id } });
+  await review({ action: 'sign-out' });
+  await request(draftPath, 401, { cookie: namedCookie });
+  const afterLogout = await request(seeded.location, 200, { cookie });
+  assert.match(afterLogout.html, /Recent operator activity/);
+  const rows = [...afterLogout.html.matchAll(/<strong\b[^>]*>(operator|reviewer)<\/strong>\s*·\s*(Signed in|Signed out|Saved draft|Approved and released preview|Revoked preview|Marked order delivered)/g)]
+    .map(([, actor, action]) => [actor, action]);
+  assert.deepEqual(rows, [
+    ['reviewer', 'Signed out'], ['operator', 'Marked order delivered'], ['reviewer', 'Approved and released preview'],
+    ['reviewer', 'Revoked preview'], ['reviewer', 'Signed in'], ['operator', 'Approved and released preview'],
+    ['operator', 'Saved draft'], ['operator', 'Saved draft'], ['operator', 'Signed in'],
+  ]);
+
+  const newCookie = async newKey => (await request('/api/agency', 303, { form: {
+    action: 'sign-in', operator: 'reviewer', key: newKey,
+  } })).headers.get('set-cookie').split(';', 1)[0];
+  const beforeRotation = await newCookie(reviewerKey);
+  const rotatedKey = randomBytes(32).toString('hex');
+  process.env.SITEBEFORE_OPERATORS = 'reviewer:' + rotatedKey;
+  await request(draftPath, 401, { cookie: beforeRotation });
+  await request(draftPath, 200, { cookie });
+  const afterRotation = await newCookie(rotatedKey);
+  await request(draftPath, 200, { cookie: afterRotation });
+  delete process.env.SITEBEFORE_OPERATORS;
+  await request(draftPath, 401, { cookie: afterRotation });
+  await request(draftPath, 200, { cookie });
 });

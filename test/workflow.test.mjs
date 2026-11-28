@@ -10,9 +10,49 @@ import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
 import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
-import { readForm } from '../src/lib/http.mjs';
+import { configuredOperators, readForm, verifyOperatorLogin } from '../src/lib/http.mjs';
 
 const { version: offerVersion, amount: price } = currentOffer;
+
+test('named credentials preserve the legacy account and throttle failures per address', t => {
+  const key = 'a'.repeat(32);
+  const legacy = 'b'.repeat(32);
+  assert.deepEqual([...configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key, SITEBEFORE_OPERATOR_KEY: legacy })],
+    [['a', key], ['operator', legacy]]);
+  assert.equal(configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',a:' + legacy }).size, 0);
+  assert.equal(configuredOperators({ SITEBEFORE_OPERATORS: 'a:short' }).size, 0);
+  const original = process.env.SITEBEFORE_OPERATORS;
+  t.after(() => {
+    if (original === undefined) delete process.env.SITEBEFORE_OPERATORS;
+    else process.env.SITEBEFORE_OPERATORS = original;
+  });
+  process.env.SITEBEFORE_OPERATORS = 'a:' + key;
+  const now = Date.now();
+  for (let i = 0; i < 5; i++) {
+    assert.throws(() => verifyOperatorLogin(i % 2 ? 'unknown' : 'a', 'wrong', '192.0.2.1', now),
+      { status: 401, message: 'The operator name or key did not match.' });
+  }
+  assert.throws(() => verifyOperatorLogin('a', key, '192.0.2.1', now), { status: 429 });
+  assert.ok(verifyOperatorLogin('a', key, '192.0.2.2', now));
+  assert.ok(verifyOperatorLogin('a', key, '192.0.2.1', now + 15 * 60 * 1000));
+});
+
+test('operator sessions expire at the stored deadline and audit is limited to the latest 50 writes', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  assert.deepEqual(await db.recentOperatorAudit(), []);
+  await db.createOperatorSession('expired-session', 'reviewer', 'fixture-key-hash', 100, 200);
+  assert.equal((await db.operatorSession('expired-session', 199)).operator, 'reviewer');
+  assert.equal(await db.operatorSession('expired-session', 200), undefined);
+  for (let i = 0; i < 50; i++) {
+    await db.createOperatorSession('session-' + i, 'operator-' + i, 'fixture-key-hash', 201, 300);
+  }
+  const entries = await db.recentOperatorAudit();
+  assert.equal(entries.length, 50);
+  assert.equal(entries[0].operator, 'operator-49');
+  assert.equal(entries.at(-1).operator, 'operator-0');
+  assert.ok(entries.every(entry => entry.action === 'login' && Number.isFinite(Date.parse(entry.occurred_at))));
+});
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');

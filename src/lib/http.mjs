@@ -1,5 +1,6 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { WorkflowError } from './prospect.mjs';
+import { getStore } from './store.mjs';
 
 export const privateHeaders = {
   'cache-control': 'private, no-store',
@@ -52,6 +53,14 @@ export async function readForm(request, limit) {
 }
 
 const cookieName = 'sitebefore_operator';
+const sessionSeconds = 3600;
+const sessionToken = /^[A-Za-z0-9_-]{43}$/;
+const operatorName = /^[A-Za-z0-9_-]{1,64}$/;
+const fallbackKey = randomBytes(32);
+const failureWindow = 15 * 60 * 1000;
+const failures = new Map();
+let nextPrune = 0;
+
 function sign(input, key) {
   return createHmac('sha256', key).update(input).digest('base64url');
 }
@@ -61,33 +70,69 @@ function equal(a, b) {
   return first.length === second.length && timingSafeEqual(first, second);
 }
 
-export function operatorKey() {
-  const key = process.env.SITEBEFORE_OPERATOR_KEY;
-  return key?.length >= 32 ? key : null;
-}
-
-export function isOperator(cookies) {
-  const key = operatorKey();
-  const token = cookies.get(cookieName)?.value;
-  if (!key || !token) return false;
-  const [expires, mac, extra] = token.split('.');
-  return !extra && !!mac && /^\d+$/.test(expires) && Number(expires) > Date.now() &&
-    equal(mac, sign('session:' + expires, key));
-}
-
-export function logIn(cookies, supplied, requestURL) {
-  const key = operatorKey();
-  if (!key) throw new WorkflowError('Operator access is unavailable.', 503);
-  if (!equal(sign('login:' + supplied, key), sign('login:' + key, key))) {
-    throw new WorkflowError('The operator key did not match.', 401);
+export function configuredOperators(env = process.env) {
+  const operators = new Map();
+  if (env.SITEBEFORE_OPERATORS?.trim()) {
+    for (const pair of env.SITEBEFORE_OPERATORS.split(',')) {
+      const split = pair.indexOf(':');
+      const name = pair.slice(0, split).trim();
+      const key = pair.slice(split + 1).trim();
+      if (split < 1 || !operatorName.test(name) || key.length < 32 || operators.has(name)) return new Map();
+      operators.set(name, key);
+    }
   }
-  const seconds = 3600;
-  const expires = String(Date.now() + seconds * 1000);
-  cookies.set(cookieName, expires + '.' + sign('session:' + expires, key), {
-    httpOnly: true, secure: new URL(requestURL).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: seconds,
+  const legacy = env.SITEBEFORE_OPERATOR_KEY;
+  if (legacy?.length >= 32 && !operators.has('operator')) operators.set('operator', legacy);
+  return operators;
+}
+
+const tokenHash = token => createHash('sha256').update(token).digest('hex');
+const keyHash = key => sign('sitebefore:operator-session:v1', key);
+
+export async function operatorSession(cookies) {
+  const token = cookies.get(cookieName)?.value ?? '';
+  const operators = configuredOperators();
+  if (!sessionToken.test(token) || !operators.size) return null;
+  const id = tokenHash(token);
+  const row = await (await getStore()).operatorSession(id, Date.now());
+  const key = row && operators.get(row.operator);
+  return key && equal(row.key_hash, keyHash(key)) ? { id, name: row.operator } : null;
+}
+
+export function verifyOperatorLogin(name, supplied, address, now = Date.now()) {
+  const operators = configuredOperators();
+  if (!operators.size) throw new WorkflowError('Operator access is unavailable.', 503);
+  if (now >= nextPrune) {
+    for (const [ip, entry] of failures) if (entry.until <= now) failures.delete(ip);
+    nextPrune = now + 60_000;
+  }
+  const bucket = failures.has(address) || failures.size < 10_000 ? address : null;
+  const previous = failures.get(bucket);
+  const entry = previous?.until > now ? previous : { count: 0, until: now + failureWindow };
+  if (entry.count >= 5) throw new WorkflowError('Too many sign-in attempts. Try again later.', 429);
+  const key = operators.get(name);
+  const comparisonKey = key ?? fallbackKey;
+  const match = equal(keyHash(supplied || fallbackKey), keyHash(comparisonKey));
+  if (!match || !key) {
+    entry.count++;
+    failures.set(bucket, entry);
+    throw new WorkflowError('The operator name or key did not match.', 401);
+  }
+  failures.delete(bucket);
+  return keyHash(key);
+}
+
+export async function logIn(cookies, name, supplied, requestURL, address) {
+  const verifier = verifyOperatorLogin(name, supplied, address);
+  const token = randomBytes(32).toString('base64url');
+  const now = Date.now();
+  await (await getStore()).createOperatorSession(tokenHash(token), name, verifier, now, now + sessionSeconds * 1000);
+  cookies.set(cookieName, token, {
+    httpOnly: true, secure: new URL(requestURL).protocol === 'https:', sameSite: 'strict', path: '/', maxAge: sessionSeconds,
   });
 }
 
-export function logOut(cookies) {
+export async function logOut(cookies, session) {
+  await (await getStore()).deleteOperatorSession(session.id, session.name);
   cookies.delete(cookieName, { path: '/' });
 }

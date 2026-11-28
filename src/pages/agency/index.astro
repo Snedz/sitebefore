@@ -1,7 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import Brand from '../../components/Brand.astro';
-import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
+import { configuredOperators, operatorSession, privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
 import { displayPrice } from '../../lib/offer.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
@@ -9,35 +9,43 @@ import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
 export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
-const operator = isOperator(Astro.cookies);
-const enabled = operatorKey();
+const enabled = configuredOperators().size > 0;
 const page = agencyPage(Astro.url.searchParams.get('page'));
 const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
+  operator,
   selected,
+  approvedBy,
+  audit = [],
   counts,
   hasNext = false,
   showDemo = false,
   unavailable = false;
-if (operator) {
-  try {
+try {
+  operator = await operatorSession(Astro.cookies);
+  if (operator) {
     const store = await getStore();
     const id = Astro.url.searchParams.get('lead');
-    const [list, totals, lead, demoExists] = await Promise.all([
+    const [list, totals, lead, demoExists, history] = await Promise.all([
       store.list(page),
       store.counts(),
       id ? store.find(id) : null,
       checkoutMode() === 'demo' ? store.hasBusiness('example.com/juniper-motor-works') : true,
+      store.recentOperatorAudit(),
     ]);
     ({ leads, hasNext } = list);
     counts = totals;
     selected = lead;
+    approvedBy = lead?.share_token && await store.approvedBy(lead.id, lead.approved_at);
+    audit = history;
     showDemo = !demoExists;
-  } catch {
-    unavailable = true;
-    Astro.response.status = 503;
   }
+} catch {
+  unavailable = true;
+  Astro.response.status = 503;
 }
+const actionLabels = { login: 'Signed in', logout: 'Signed out', save: 'Saved draft',
+  release: 'Approved and released preview', revoke: 'Revoked preview', delivered: 'Marked order delivered' };
 const stats = [
   ['Drafts', counts?.drafts],
   ['Shared', counts?.shared],
@@ -78,7 +86,7 @@ function stage(lead) {
       {
         operator && (
           <form method="post" action="/api/agency">
-            <button class="button outline" name="action" value="sign-out">
+            <button class="button outline" name="action" value="sign-out" aria-label={`Sign out ${operator.name}`}>
               Sign out
             </button>
           </form>
@@ -91,11 +99,13 @@ function stage(lead) {
       <main class="wrap gate">
         <section class="panel stack">
           <h1>Operator sign-in</h1>
-          {enabled ? (
+          {unavailable ? <p role="alert">Agency storage is unavailable.</p> : enabled ? (
             <form class="stack" method="post" action="/api/agency">
               {Astro.url.searchParams.has('notice') && (
-                <p role="alert">Check your operator key and try again.</p>
+                <p role="alert">Check your operator name and key and try again.</p>
               )}
+              <label for="operator">Operator name</label>
+              <input id="operator" name="operator" type="text" value="operator" maxlength="64" autocomplete="username" required />
               <label for="key">Operator key</label>
               <input id="key" name="key" type="password" autocomplete="current-password" required />
               <button class="button" name="action" value="sign-in">
@@ -115,6 +125,7 @@ function stage(lead) {
               <>
                 <p class="eyebrow">Prospects and orders</p>
                 <h1>Agency workspace</h1>
+                <p class="muted operator-name">Signed in as {operator.name}</p>
               </>
             </div>
             <a class="button" href="/agency/#dossier">
@@ -177,6 +188,7 @@ function stage(lead) {
                 {selected && (
                   <p class="muted">
                     {stage(selected)} · {displayPrice(selected.data.currency, selected.offer.amount)}
+                    {approvedBy && <><br />Approved by {approvedBy}</>}
                     <br />
                     <a href={selected.data.businessUrl} rel="noreferrer noopener" target="_blank">
                       Business source ↗
@@ -319,6 +331,20 @@ function stage(lead) {
                 )}
               </section>
             </div>
+            <section class="panel stack operator-audit" aria-labelledby="operator-audit-title">
+              <h2 id="operator-audit-title">Recent operator activity</h2>
+              {audit.length ? (
+                <ol>
+                  {audit.map(entry => (
+                    <li>
+                      <strong>{entry.operator}</strong> · {actionLabels[entry.action] ?? entry.action}
+                      {entry.prospect_id && <> · <a href={agencyPath(page, entry.prospect_id) + '#dossier'}>View prospect</a></>}
+                      <br /><time datetime={entry.occurred_at}>{entry.occurred_at}</time>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p class="muted">No operator activity recorded yet.</p>}
+            </section>
           </>
         )}
       </main>
@@ -326,6 +352,7 @@ function stage(lead) {
   }
 </Base>
 <style>
+  .operator-name, .operator-audit { overflow-wrap: anywhere; }
   header {
     border-bottom: 1px solid var(--line);
     background: var(--paper);
