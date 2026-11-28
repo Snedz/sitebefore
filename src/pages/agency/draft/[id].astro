@@ -3,13 +3,17 @@ import StoryPreview from '../../../components/StoryPreview.astro';
 import PricePanel from '../../../components/PricePanel.astro';
 import { demoBusinessUrl } from '../../../data/demo-prospect.mjs';
 import { operatorSession, privateHeaders } from '../../../lib/http.mjs';
+import { WorkflowError } from '../../../lib/prospect.mjs';
 import { getStore, prospectSummary } from '../../../lib/store.mjs';
 export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
 let operator;
 try { operator = await operatorSession(Astro.cookies); }
-catch { return new Response('Agency storage is unavailable.', { status: 503, headers: privateHeaders }); }
+catch (error) {
+  return new Response(error instanceof WorkflowError ? error.message : 'Agency storage is unavailable.',
+    { status: 503, headers: privateHeaders });
+}
 if (!operator)
   return new Response('Sign in to view drafts.', { status: 401, headers: privateHeaders });
 const lead = await (await getStore()).find(Astro.params.id);

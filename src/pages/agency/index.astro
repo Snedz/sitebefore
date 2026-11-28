@@ -9,7 +9,13 @@ import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
 export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
-const enabled = configuredOperators().size > 0;
+let enabled = false;
+let configurationError = '';
+try { enabled = configuredOperators().size > 0; }
+catch (error) {
+  configurationError = error.message;
+  Astro.response.status = 503;
+}
 const page = agencyPage(Astro.url.searchParams.get('page'));
 const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
@@ -22,7 +28,7 @@ let leads = [],
   showDemo = false,
   unavailable = false;
 try {
-  operator = await operatorSession(Astro.cookies);
+  if (enabled) operator = await operatorSession(Astro.cookies);
   if (operator) {
     const store = await getStore();
     const id = Astro.url.searchParams.get('lead');
@@ -99,7 +105,7 @@ function stage(lead) {
       <main class="wrap gate">
         <section class="panel stack">
           <h1>Operator sign-in</h1>
-          {unavailable ? <p role="alert">Agency storage is unavailable.</p> : enabled ? (
+          {configurationError ? <p role="alert">{configurationError}</p> : unavailable ? <p role="alert">Agency storage is unavailable.</p> : enabled ? (
             <form class="stack" method="post" action="/api/agency">
               {Astro.url.searchParams.has('notice') && (
                 <p role="alert">Check your operator name and key and try again.</p>

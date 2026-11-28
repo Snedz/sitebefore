@@ -36,7 +36,7 @@ The Vercel build uses on-demand Astro routes for the workspace and preview while
 
 | Variable | Purpose |
 | --- | --- |
-| `SITEBEFORE_OPERATORS` | Comma-separated `name:key` pairs. Use unique, case-sensitive names (letters, digits, hyphens or underscores, up to 64 characters) and distinct high-entropy keys of at least 32 characters, without commas or surrounding spaces. Malformed entries or duplicate names invalidate the list. |
+| `SITEBEFORE_OPERATORS` | Comma-separated `name:key` pairs. Use unique, case-sensitive names (letters, digits, hyphens or underscores, up to 64 characters) and distinct high-entropy keys of at least 32 characters, without commas or surrounding spaces. Malformed entries, duplicate names or a repeated key (including an active legacy account) disable operator access. |
 | `SITEBEFORE_OPERATOR_KEY` | Legacy key of at least 32 characters, for the account named `operator`. An explicitly configured `operator` takes precedence. |
 | `SITEBEFORE_DB_URL`, `SITEBEFORE_DB_TOKEN` | Authenticated libSQL database scoped to this review environment. The app initializes its pilot tables on first use. |
 | `SITEBEFORE_ORIGIN` | Exact HTTPS origin for buyer links and checkout callbacks. Use the fixed review hostname. |

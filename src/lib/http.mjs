@@ -72,17 +72,24 @@ function equal(a, b) {
 
 export function configuredOperators(env = process.env) {
   const operators = new Map();
+  const keys = new Set();
+  const add = (name, key) => {
+    if (!operatorName.test(name) || key.length < 32 || operators.has(name) || keys.has(key)) {
+      throw new WorkflowError('Invalid operator configuration: use unique operator names and distinct keys of at least 32 characters.', 503);
+    }
+    operators.set(name, key);
+    keys.add(key);
+  };
   if (env.SITEBEFORE_OPERATORS?.trim()) {
     for (const pair of env.SITEBEFORE_OPERATORS.split(',')) {
       const split = pair.indexOf(':');
       const name = pair.slice(0, split).trim();
       const key = pair.slice(split + 1).trim();
-      if (split < 1 || !operatorName.test(name) || key.length < 32 || operators.has(name)) return new Map();
-      operators.set(name, key);
+      add(split < 1 ? '' : name, key);
     }
   }
   const legacy = env.SITEBEFORE_OPERATOR_KEY;
-  if (legacy?.length >= 32 && !operators.has('operator')) operators.set('operator', legacy);
+  if (legacy && !operators.has('operator')) add('operator', legacy);
   return operators;
 }
 

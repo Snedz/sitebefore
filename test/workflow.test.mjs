@@ -19,8 +19,11 @@ test('named credentials preserve the legacy account and throttle failures per ad
   const legacy = 'b'.repeat(32);
   assert.deepEqual([...configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key, SITEBEFORE_OPERATOR_KEY: legacy })],
     [['a', key], ['operator', legacy]]);
-  assert.equal(configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',a:' + legacy }).size, 0);
-  assert.equal(configuredOperators({ SITEBEFORE_OPERATORS: 'a:short' }).size, 0);
+  const invalid = { status: 503, message: /unique operator names and distinct keys/ };
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',a:' + legacy }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',b:' + key }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key, SITEBEFORE_OPERATOR_KEY: key }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:short' }), invalid);
   const original = process.env.SITEBEFORE_OPERATORS;
   t.after(() => {
     if (original === undefined) delete process.env.SITEBEFORE_OPERATORS;
