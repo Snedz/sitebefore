@@ -36,12 +36,11 @@ function evidenceUrl(value) {
 function valueAppearsInExcerpt(key, value, excerpt) {
   if (!urlFields.has(key)) return normalizeEvidenceText(excerpt).includes(normalizeEvidenceText(value));
   const expected = evidenceUrl(value);
-  return expected !== null && (excerpt.match(/https:\/\/[^\s<>]+/gi) ?? []).some(candidate => {
-    while (evidenceUrl(candidate) !== expected) {
-      if (!/[.,);:!?"'”’]$/.test(candidate)) return false;
-      candidate = candidate.slice(0, -1);
-    }
-    return true;
+  return expected !== null && (excerpt.match(/https:\/\/[^\s"'`“”‘’<>()\[\]{}]+/gi) ?? []).some(token => {
+    const candidate = evidenceUrl(token);
+    if (candidate === expected) return true;
+    const suffix = candidate?.slice(expected.length);
+    return /^[.,;:!?]+$/.test(suffix ?? '') && candidate.slice(0, -suffix.length) === expected;
   });
 }
 

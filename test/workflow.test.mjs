@@ -116,6 +116,24 @@ test('URL evidence ignores scheme and host case but preserves the exact path and
   assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
 });
 
+test('URL evidence ends at compact JSON delimiters, brackets or sentence punctuation', () => {
+  const input = exportFixture();
+  const value = 'https://x.com/a';
+  for (const excerpt of [
+    '{"website":"https://x.com/a","phone":"469-687-5439"}',
+    "website='https://x.com/a',phone='469-687-5439'",
+    'website=`https://x.com/a`,phone=469-687-5439',
+    '<https://x.com/a>next',
+    '[https://x.com/a]next',
+    '{https://x.com/a}next',
+    '(https://x.com/a)next',
+    'The website is https://x.com/a. Call for details.',
+  ]) {
+    input.facts.website = { ...input.facts.maps_url, value, excerpt };
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)), excerpt);
+  }
+});
+
 test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
   const clock = Date.parse('2026-11-28T12:00:00Z');
   const retrieved = '2026-11-01T15:45:00-05:00';
