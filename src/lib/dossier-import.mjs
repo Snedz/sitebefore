@@ -6,6 +6,7 @@ const fields = {
   intro: ['intro'], service: ['service', 'services'], headline: ['headline'], story: ['story'], phone: ['phone'],
 };
 const emptySnapshotFields = new Set(['website', 'phone', 'category', 'city']);
+const urlFields = new Set(['maps_url', 'website']);
 const isObject = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const timestamp = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-]\d{2}:[0-5]\d)$/;
 
@@ -24,6 +25,19 @@ function httpsUrl(value) {
   } catch {
     return null;
   }
+}
+
+function evidenceUrl(value) {
+  if (!httpsUrl(value)) return null;
+  const parts = /^(https:\/\/[^/?#\s]+)([^\s]*)$/i.exec(value);
+  return parts ? parts[1].toLowerCase() + parts[2] : null;
+}
+
+function valueAppearsInExcerpt(key, value, excerpt) {
+  if (!urlFields.has(key)) return normalizeEvidenceText(excerpt).includes(normalizeEvidenceText(value));
+  const expected = evidenceUrl(value);
+  return expected !== null && (excerpt.match(/https:\/\/[^\s<>"']+/gi) ?? [])
+    .some(candidate => evidenceUrl(candidate) === expected);
 }
 
 function duplicateKeys(raw) {
@@ -75,7 +89,7 @@ export function parseDossierExport(raw, now = Date.now()) {
       try { checkFreshness([{ field: label, checked }], now); } catch (error) { issues.push(error.message); }
     }
     if (!excerpt || excerpt.length > 1500) issues.push(`${label}: provide a captured excerpt (1–1500 characters).`);
-    else if (!normalizeEvidenceText(excerpt).includes(normalizeEvidenceText(value))) {
+    else if (!valueAppearsInExcerpt(key, value, excerpt)) {
       issues.push(`${label}: the fact value does not appear in the excerpt.`);
     }
     if (key === 'phone' && !businessPhoneLink(value)) issues.push(`${label}: invalid US or Canadian business phone number.`);
@@ -95,7 +109,11 @@ export function parseDossierExport(raw, now = Date.now()) {
   }
   for (const [key, rows] of groups) {
     if (['service', 'services'].includes(key)) continue;
-    const values = new Set(rows.map(({ row }) => key === 'phone' ? businessPhoneLink(row.value) : normalizeEvidenceText(row.value)));
+    const values = new Set(rows.map(({ row }) => {
+      if (key === 'phone') return businessPhoneLink(row.value);
+      if (urlFields.has(key)) return evidenceUrl(row.value);
+      return normalizeEvidenceText(row.value);
+    }));
     if (values.size > 1) issues.push(`${rows.map(({ label }) => label).join(', ')}: contradictory values for ${key}.`);
   }
   const cities = groups.get('city') ?? [];

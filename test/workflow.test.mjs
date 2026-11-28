@@ -57,6 +57,31 @@ test('an explicit location and city must agree', () => {
   assert.throws(() => parseDossierExport(JSON.stringify(input)), /location, city: contradictory values for location/);
 });
 
+test('URL evidence ignores scheme and host case but preserves the exact path and query', () => {
+  const input = exportFixture();
+  const source = input.facts.maps_url.source;
+  const retrieved = input.facts.maps_url.retrieved;
+  const value = 'HTTPS://EXAMPLE.COM/Listing?Ref=ABC';
+  const excerpt = 'Captured URL: https://example.com/Listing?Ref=ABC';
+  input.facts.maps_url = { value, excerpt, source, retrieved };
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  for (const changed of [
+    'https://example.com/listing?Ref=ABC',
+    'https://example.com/Listing?Ref=abc',
+    'https://example.com/Listing?Ref=ABCD',
+  ]) {
+    input.facts.maps_url.excerpt = changed;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url: the fact value does not appear in the excerpt/);
+  }
+  input.facts.maps_url = [
+    { value, excerpt, source, retrieved },
+    { value: 'https://example.com/listing?Ref=ABC', excerpt: 'https://example.com/listing?Ref=ABC', source, retrieved },
+  ];
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url\[1\], maps_url\[2\]: contradictory values for maps_url/);
+  input.facts.maps_url[1].value = input.facts.maps_url[1].excerpt = 'https://example.com/Listing?Ref=ABC';
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+});
+
 test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
   const clock = Date.parse('2026-11-28T12:00:00Z');
   const retrieved = '2026-11-01T15:45:00-05:00';
