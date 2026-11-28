@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Brand from '../components/Brand.astro';
-import { scope, displayPrice } from '../lib/offer.mjs';
+import { currentOffer, displayPrice } from '../lib/offer.mjs';
 import sample from '../data/juniper.json';
 const steps = [
   ['Open your private link', 'Look through the site we built for your business on your phone or computer.'],
@@ -63,7 +63,7 @@ const steps = [
           <p>{displayPrice('CAD')} for Canadian businesses. One-time payment.</p>
         </div>
         <div>
-          <ul>{scope.map((item) => <li>{item}</li>)}</ul>
+          <ul>{currentOffer.scope.map((item) => <li>{item}</li>)}</ul>
           <p>Already have a private link? Open it to review your site and check out.</p>
         </div>
       </div>

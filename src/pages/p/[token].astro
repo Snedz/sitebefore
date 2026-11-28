@@ -34,7 +34,7 @@ const status = Astro.url.searchParams.get('checkout');
 {
   lead ? (
     <StoryPreview profile={prospectSummary(lead)} contactUrl={lead.data.businessUrl === demoBusinessUrl ? undefined : lead.data.businessUrl}>
-      <PricePanel currency={lead.data.currency}>
+      <PricePanel currency={lead.data.currency} offer={lead.offer}>
         {lead.paid_at ? (
           <div class="notice stack" role="status">
             <strong>

@@ -8,9 +8,11 @@ import Stripe from 'stripe';
 import { createStore } from '../src/lib/store.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
-import { offerVersion, price } from '../src/lib/offer.mjs';
+import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
 import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
 import { readForm } from '../src/lib/http.mjs';
+
+const { version: offerVersion, amount: price } = currentOffer;
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');
@@ -86,9 +88,76 @@ test('approval binds to the reviewed revision and revoking reopens the draft', a
   assert.notEqual((await db.find(id)).share_token, approved.share_token);
 });
 
+test('released and legacy previews keep their terms across an offer change', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'sitebefore-offer-change-'));
+  const url = 'file:' + join(directory, 'orders.db');
+  let db = await createStore({ url });
+  t.after(() => { db.close(); rmSync(directory, { recursive: true, force: true }); });
+  const input = makeDemoProspect();
+  const oldId = await db.save({ ...input, offer: { amount: 1 } });
+  const legacyId = await db.save({ ...input, businessUrl: 'https://example.com/legacy' });
+  const newId = await db.save({ ...input, businessUrl: 'https://example.com/next', currency: 'CAD' });
+  await db.release(oldId, 1);
+  await db.release(legacyId, 1);
+  const { share_token: oldToken } = await db.find(oldId);
+  const { share_token: legacyToken } = await db.find(legacyId);
+  const oldAttempt = (await db.reserveAttempt(oldId, oldToken)).attempt;
+  await db.recordSession(oldId, oldAttempt, 'previous-checkout');
+  db.close();
+
+  const previousSchema = createClient({ url });
+  await previousSchema.execute({
+    sql: "UPDATE prospects SET payload = json_remove(payload, '$.offer') WHERE id = ?",
+    args: [legacyId],
+  });
+  previousSchema.close();
+
+  const nextOffer = { amount: 72550, version: 'fixture-v2', scope: ['A different package for this fixture'] };
+  db = await createStore({ url }, nextOffer);
+  assert.deepEqual((await db.publicLead(oldToken)).offer, currentOffer);
+  assert.deepEqual((await db.publicLead(legacyToken)).offer, launchOffer);
+  await assert.rejects(db.release(newId, 1, currentOffer.version), /offer changed/);
+  await db.release(newId, 1, nextOffer.version);
+  const { share_token: newToken, offer } = await db.find(newId);
+  assert.deepEqual(offer, nextOffer);
+
+  const oldPayment = {
+    id: oldId, attempt: oldAttempt, sessionId: 'previous-checkout', currency: 'USD',
+    amount: price, version: offerVersion, provider: 'stripe-test',
+  };
+  await db.resetFailedSession({ ...oldPayment, version: nextOffer.version });
+  assert.equal((await db.publicLead(oldToken)).checkout_id, 'previous-checkout');
+  assert.ok(await db.pay(oldPayment));
+  assert.ok(await db.pay(oldPayment));
+  assert.equal(await db.pay({ ...oldPayment, amount: nextOffer.amount }), false);
+  assert.equal(await db.pay({ ...oldPayment, provider: 'demo' }), false);
+
+  const legacyAttempt = (await db.reserveAttempt(legacyId, legacyToken)).attempt;
+  assert.ok(await db.pay({
+    ...oldPayment, id: legacyId, attempt: legacyAttempt, sessionId: 'legacy-checkout',
+    amount: launchOffer.amount, version: launchOffer.version,
+  }));
+
+  const started = await db.reserveAttempt(newId, newToken);
+  await db.recordSession(newId, started.attempt, 'first-checkout');
+  const failed = {
+    id: newId, attempt: started.attempt, sessionId: 'first-checkout', currency: 'CAD',
+    amount: nextOffer.amount, version: nextOffer.version, provider: 'stripe-test',
+  };
+  await db.resetFailedSession(failed);
+  const retry = await db.publicLead(newToken);
+  assert.notEqual(retry.attempt, started.attempt);
+  assert.equal(retry.checkout_id, null);
+  assert.deepEqual(retry.offer, nextOffer);
+  assert.equal(await db.pay(failed), false);
+  const newPayment = { ...failed, attempt: retry.attempt, sessionId: 'next-checkout' };
+  assert.equal(await db.pay({ ...newPayment, ...currentOffer }), false);
+  assert.ok(await db.pay(newPayment));
+});
+
 test('duplicate orders converge, stale checkout cannot fulfill, and receipt persists', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'sitebefore-test-'));
-const url = 'file:' + join(directory, 'orders.db');
+  const url = 'file:' + join(directory, 'orders.db');
   let db = await createStore({ url });
   t.after(() => { db.close(); rmSync(directory, { recursive: true, force: true }); });
   const input = makeDemoProspect();
@@ -218,7 +287,7 @@ test('only signed, paid Stripe sandbox events can become order candidates', () =
     assert.ok(paymentFromEvent({ ...event, type: 'checkout.session.async_payment_succeeded' }));
     const failed = { ...event, type: 'checkout.session.async_payment_failed',
       data: { object: { ...session, payment_status: 'unpaid' } } };
-    assert.deepEqual(failureFromEvent(failed), { id: 'lead', attempt: 'one', sessionId: session.id });
+    assert.deepEqual(failureFromEvent(failed), paymentFromEvent(event));
     assert.equal(failureFromEvent({ ...failed, livemode: true }), null);
   } finally {
     if (oldKey === undefined) delete process.env.STRIPE_SECRET_KEY;

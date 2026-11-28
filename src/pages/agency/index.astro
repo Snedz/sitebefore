@@ -176,7 +176,7 @@ function stage(lead) {
                 <h2>{name ?? 'New prospect'}</h2>
                 {selected && (
                   <p class="muted">
-                    {stage(selected)} · {displayPrice(selected.data.currency)}
+                    {stage(selected)} · {displayPrice(selected.data.currency, selected.offer.amount)}
                     <br />
                     <a href={selected.data.businessUrl} rel="noreferrer noopener" target="_blank">
                       Business source ↗
@@ -212,6 +212,7 @@ function stage(lead) {
                     <form class="stack" method="post" action={prospectAction}>
                       <input type="hidden" name="id" value={selected.id} />
                       <input type="hidden" name="revision" value={selected.revision} />
+                      <input type="hidden" name="offer_version" value={selected.offer.version} />
                       <label class="confirm">
                         <input name="verified" type="checkbox" value="yes" required /> I checked the sources
                         and preview. The facts match this business.
@@ -269,7 +270,7 @@ function stage(lead) {
                             rows="9"
                             aria-label="Pitch draft"
                             readonly
-                          >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
+                          >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency, selected.offer.amount)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
                         </details>
                         {!selected.attempt && (
                           <form method="post" action={prospectAction}>

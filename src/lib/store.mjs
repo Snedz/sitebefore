@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeProspect, checkFreshness, publicProfile, WorkflowError } from './prospect.mjs';
-import { price, offerVersion } from './offer.mjs';
+import { currentOffer, launchOffer } from './offer.mjs';
 
 const schema = [
   `CREATE TABLE IF NOT EXISTS prospects (
@@ -22,11 +22,16 @@ const schema = [
 ];
 
 const now = () => new Date().toISOString();
-const hydrate = row => row && ({ ...row, data: JSON.parse(String(row.payload)) });
 const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id, d.site_url
   FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
   LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id`;
 const pageSize = 100;
+
+function matchesCheckout(lead, event) {
+  return lead?.share_token && lead.attempt === event.attempt &&
+    lead.offer.amount === event.amount && lead.offer.version === event.version &&
+    lead.data.currency === event.currency;
+}
 
 function deliveryUrl(value) {
   const invalid = () => new WorkflowError('Enter the published site’s HTTPS URL without credentials or URL parameters.');
@@ -39,11 +44,21 @@ function deliveryUrl(value) {
   return url.href;
 }
 
-export async function createStore(config) {
+export async function createStore(config, offer = currentOffer) {
   const db = createClient(config);
   try { await db.batch(schema, 'write'); } catch (err) { db.close(); throw err; }
   const execute = (sql, args = []) => db.execute({ sql, args });
+  const hydrate = row => {
+    if (!row) return row;
+    const { offer: approvedOffer, ...data } = JSON.parse(String(row.payload));
+    return { ...row, data, offer: row.share_token ? approvedOffer ?? launchOffer : offer };
+  };
   const find = async id => hydrate((await execute(select + ' WHERE p.id = ?', [id])).rows[0]);
+  const resetExpiredSession = async (id, attempt, sessionId) => {
+    await execute(`UPDATE prospects SET attempt = ?, checkout_id = NULL WHERE id = ? AND attempt = ? AND checkout_id = ?
+      AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?)`, [randomUUID(), id, attempt, sessionId, id]);
+    return find(id);
+  };
   return {
     close: () => db.close(),
     async list(page = 1) {
@@ -83,17 +98,23 @@ export async function createStore(config) {
       if (!saved.rowsAffected) throw new WorkflowError('A duplicate, approved or changed prospect prevented this save. Reload before editing.', 409);
       return leadId;
     },
-    async release(id, revision) {
+    async release(id, revision, reviewedOfferVersion = offer.version) {
       const lead = await find(id);
       if (!lead) throw new WorkflowError('Prospect not found.', 404);
       if (lead.share_token) return;
+      if (reviewedOfferVersion !== offer.version) {
+        throw new WorkflowError('The offer changed. Reload and review the new terms before approving.', 409);
+      }
       checkFreshness(lead.data.facts);
-      const saved = await execute(`UPDATE prospects SET share_token = ?, approved_at = ?
-        WHERE id = ? AND share_token IS NULL AND revision = ?`, [randomBytes(24).toString('base64url'), now(), id, revision]);
+      const saved = await execute(`UPDATE prospects
+        SET share_token = ?, approved_at = ?, payload = json_set(payload, '$.offer', json(?))
+        WHERE id = ? AND share_token IS NULL AND revision = ?`,
+        [randomBytes(24).toString('base64url'), now(), JSON.stringify(offer), id, revision]);
       if (!saved.rowsAffected) throw new WorkflowError('This prospect changed. Reload and review the evidence again.', 409);
     },
     async revoke(id) {
-      const saved = await execute(`UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1
+      const saved = await execute(`UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
+          payload = json_remove(payload, '$.offer')
         WHERE id = ? AND share_token IS NOT NULL AND attempt IS NULL`, [id]);
       if (!saved.rowsAffected) throw new WorkflowError('A preview with a checkout attempt cannot be revoked here.', 409);
     },
@@ -110,13 +131,16 @@ export async function createStore(config) {
         [sessionId, id, attempt, sessionId]);
       if (!saved.rowsAffected) throw new WorkflowError('Checkout changed. Please open your preview and retry.', 409);
     },
-    async resetExpiredSession(id, attempt, sessionId) {
-      await execute(`UPDATE prospects SET attempt = ?, checkout_id = NULL WHERE id = ? AND attempt = ? AND checkout_id = ?
-        AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?)`, [randomUUID(), id, attempt, sessionId, id]);
-      return find(id);
+    resetExpiredSession,
+    async resetFailedSession(event) {
+      const lead = await find(event.id);
+      if (matchesCheckout(lead, event)) await resetExpiredSession(event.id, event.attempt, event.sessionId);
     },
-    async pay({ id, attempt, sessionId, amount, currency, version, provider }) {
-      if (amount !== price || version !== offerVersion) return false;
+    async pay(event) {
+      const { id, attempt, sessionId, amount, currency, provider } = event;
+      // The offer is immutable once an attempt starts. The insert still checks
+      // the attempt in case Stripe expired it while the webhook was in flight.
+      if (!matchesCheckout(await find(id), event)) return false;
       const inserted = await execute(`INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
         SELECT id, ?, ?, ?, ?, ? FROM prospects
         WHERE id = ? AND attempt = ? AND share_token IS NOT NULL
@@ -124,7 +148,8 @@ export async function createStore(config) {
         ON CONFLICT(prospect_id) DO NOTHING`,
         [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId]);
       if (inserted.rowsAffected) return true;
-      return (await find(id))?.receipt_id === sessionId;
+      const paid = await find(id);
+      return paid?.receipt_id === sessionId && paid.provider === provider && paid.attempt === attempt;
     },
     async markDelivered(id, siteUrl) {
       const url = deliveryUrl(siteUrl);

@@ -1,5 +1,4 @@
 import Stripe from 'stripe';
-import { offerVersion, price } from './offer.mjs';
 import { WorkflowError } from './prospect.mjs';
 
 export function checkoutMode() {
@@ -40,43 +39,42 @@ export async function startStripeCheckout(store, lead, path, origin) {
       quantity: 1,
       price_data: {
         currency: lead.data.currency.toLowerCase(),
-        unit_amount: price,
+        unit_amount: lead.offer.amount,
         product_data: { name: 'SiteBefore launch package' },
       },
     }],
     success_url: origin + path + '?checkout=returned#offer',
     cancel_url: origin + path + '?checkout=cancelled#offer',
-    metadata: { prospect_id: lead.id, attempt: lead.attempt, offer_version: offerVersion },
+    metadata: { prospect_id: lead.id, attempt: lead.attempt, offer_version: lead.offer.version },
   }, { idempotencyKey: 'sitebefore:' + lead.attempt });
   if (!session.url || session.livemode) throw new WorkflowError('Test checkout is unavailable.', 502);
   await store.recordSession(lead.id, lead.attempt, session.id);
   return session.url;
 }
 
-export function paymentFromEvent(event) {
-  if (event.livemode !== false || !['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)) {
-    return null;
-  }
-  const session = event.data.object;
-  const meta = session.metadata;
-  if (session.livemode !== false || session.mode !== 'payment' || session.payment_status !== 'paid' ||
+function checkoutFromEvent(event, paymentStatus) {
+  const session = event.data?.object;
+  const meta = session?.metadata;
+  const currency = session?.currency?.toUpperCase();
+  if (event.livemode !== false || session?.livemode !== false || session.mode !== 'payment' ||
+      session.payment_status !== paymentStatus ||
       !session.id?.startsWith('cs_test_') || !meta?.prospect_id || !meta?.attempt ||
-      meta.offer_version !== offerVersion) return null;
+      !meta.offer_version || !Number.isSafeInteger(session.amount_total) || session.amount_total <= 0 ||
+      !['USD', 'CAD'].includes(currency)) return null;
   return {
     id: meta.prospect_id, attempt: meta.attempt, sessionId: session.id,
-    amount: session.amount_total, currency: session.currency?.toUpperCase(),
+    amount: session.amount_total, currency,
     version: meta.offer_version, provider: 'stripe-test',
   };
 }
 
+export function paymentFromEvent(event) {
+  return ['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)
+    ? checkoutFromEvent(event, 'paid') : null;
+}
+
 export function failureFromEvent(event) {
-  if (event.livemode !== false || event.type !== 'checkout.session.async_payment_failed') return null;
-  const session = event.data.object;
-  const meta = session.metadata;
-  if (session.livemode !== false || session.mode !== 'payment' || session.payment_status !== 'unpaid' ||
-      !session.id?.startsWith('cs_test_') || !meta?.prospect_id || !meta?.attempt ||
-      meta.offer_version !== offerVersion || session.amount_total !== price) return null;
-  return { id: meta.prospect_id, attempt: meta.attempt, sessionId: session.id };
+  return event.type === 'checkout.session.async_payment_failed' ? checkoutFromEvent(event, 'unpaid') : null;
 }
 
 export function verifyWebhook(body, signature) {

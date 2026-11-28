@@ -13,7 +13,7 @@ export async function POST({ request }) {
       throw new WorkflowError('Session did not match a SiteBefore order.', 422);
     }
     const failed = failureFromEvent(event);
-    if (failed) await (await getStore()).resetExpiredSession(failed.id, failed.attempt, failed.sessionId);
+    if (failed) await (await getStore()).resetFailedSession(failed);
     return new Response(null, { status: 204 });
   } catch (err) {
     return fail(err);

@@ -2,7 +2,6 @@ import { checkoutMode, checkoutOrigin, startStripeCheckout } from '../../lib/che
 import { readForm, fail, sameOrigin, privateRedirect } from '../../lib/http.mjs';
 import { getStore, simulatedSession } from '../../lib/store.mjs';
 import { WorkflowError } from '../../lib/prospect.mjs';
-import { offerVersion, price } from '../../lib/offer.mjs';
 export const prerender = false;
 
 export async function POST({ request, url }) {
@@ -28,8 +27,8 @@ export async function POST({ request, url }) {
       const sessionId = simulatedSession(lead.id, lead.attempt);
       await store.recordSession(lead.id, lead.attempt, sessionId);
       if (!await store.pay({
-        id: lead.id, attempt: lead.attempt, sessionId, amount: price, currency: lead.data.currency,
-        version: offerVersion, provider: 'demo',
+        id: lead.id, attempt: lead.attempt, sessionId, amount: lead.offer.amount, currency: lead.data.currency,
+        version: lead.offer.version, provider: 'demo',
       })) throw new WorkflowError('Could not record the simulated order.', 409);
       return privateRedirect(path + '#offer');
     }
