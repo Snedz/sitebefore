@@ -213,9 +213,15 @@ function stage(lead) {
                       <input type="hidden" name="id" value={selected.id} />
                       <input type="hidden" name="revision" value={selected.revision} />
                       <input type="hidden" name="offer_version" value={selected.offer.version} />
+                      <div>
+                        <strong>Launch package · {displayPrice(selected.data.currency, selected.offer.amount)} one time</strong>
+                        <ul>
+                          {selected.offer.scope.map((item) => <li>{item}</li>)}
+                        </ul>
+                      </div>
                       <label class="confirm">
                         <input name="verified" type="checkbox" value="yes" required /> I checked the sources
-                        and preview. The facts match this business.
+                        and preview, confirmed the facts match this business, and reviewed the offer above.
                       </label>
                       <button class="button" name="action" value="release">
                         Approve and create share link
