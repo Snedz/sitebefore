@@ -57,6 +57,26 @@ test('operator sessions expire at the stored deadline and audit is limited to th
   assert.ok(entries.every(entry => entry.action === 'login' && Number.isFinite(Date.parse(entry.occurred_at))));
 });
 
+test('a full throttle evicts the oldest address without sharing a lockout across new addresses', t => {
+  const key = 'c'.repeat(32);
+  const original = process.env.SITEBEFORE_OPERATORS;
+  t.after(() => {
+    if (original === undefined) delete process.env.SITEBEFORE_OPERATORS;
+    else process.env.SITEBEFORE_OPERATORS = original;
+  });
+  process.env.SITEBEFORE_OPERATORS = 'reviewer:' + key;
+  const now = Date.now();
+  const attempt = (address, supplied) => verifyOperatorLogin('reviewer', supplied, address, now);
+  const fail = address => assert.throws(() => attempt(address, 'wrong'), { status: 401 });
+  for (let i = 0; i < 5; i++) fail('192.0.2.20');
+  assert.throws(() => attempt('192.0.2.20', key), { status: 429 });
+  for (let i = 0; i < 9_999; i++) fail('2001:db8::' + (i + 1).toString(16));
+  for (let i = 0; i < 5; i++) fail('192.0.2.21');
+  assert.throws(() => attempt('192.0.2.21', key), { status: 429 });
+  assert.ok(attempt('192.0.2.22', key));
+  assert.ok(attempt('192.0.2.20', key));
+});
+
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');
   assert.equal(checkoutOrigin('http://localhost:4321', true), 'http://localhost:4321');

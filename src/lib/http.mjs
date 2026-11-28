@@ -58,6 +58,7 @@ const sessionToken = /^[A-Za-z0-9_-]{43}$/;
 const operatorName = /^[A-Za-z0-9_-]{1,64}$/;
 const fallbackKey = randomBytes(32);
 const failureWindow = 15 * 60 * 1000;
+const maxFailureAddresses = 10_000;
 const failures = new Map();
 let nextPrune = 0;
 
@@ -113,8 +114,7 @@ export function verifyOperatorLogin(name, supplied, address, now = Date.now()) {
     for (const [ip, entry] of failures) if (entry.until <= now) failures.delete(ip);
     nextPrune = now + 60_000;
   }
-  const bucket = failures.has(address) || failures.size < 10_000 ? address : null;
-  const previous = failures.get(bucket);
+  const previous = failures.get(address);
   const entry = previous?.until > now ? previous : { count: 0, until: now + failureWindow };
   if (entry.count >= 5) throw new WorkflowError('Too many sign-in attempts. Try again later.', 429);
   const key = operators.get(name);
@@ -122,10 +122,14 @@ export function verifyOperatorLogin(name, supplied, address, now = Date.now()) {
   const match = equal(keyHash(supplied || fallbackKey), keyHash(comparisonKey));
   if (!match || !key) {
     entry.count++;
-    failures.set(bucket, entry);
+    if (entry !== previous) {
+      failures.delete(address);
+      if (failures.size >= maxFailureAddresses) failures.delete(failures.keys().next().value);
+    }
+    failures.set(address, entry);
     throw new WorkflowError('The operator name or key did not match.', 401);
   }
-  failures.delete(bucket);
+  failures.delete(address);
   return keyHash(key);
 }
 
