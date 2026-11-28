@@ -1,5 +1,6 @@
 import { checkoutMode, checkoutOrigin, startStripeCheckout } from '../../lib/checkout.mjs';
 import { readForm, fail, sameOrigin, privateRedirect } from '../../lib/http.mjs';
+import { checkoutModeForOffer } from '../../lib/offer.mjs';
 import { getStore, simulatedSession } from '../../lib/store.mjs';
 import { WorkflowError } from '../../lib/prospect.mjs';
 export const prerender = false;
@@ -28,7 +29,7 @@ export async function POST({ request, url }) {
       await store.recordSession(lead.id, lead.attempt, sessionId);
       if (!await store.pay({
         id: lead.id, attempt: lead.attempt, sessionId, amount: lead.offer.amount, currency: lead.data.currency,
-        version: lead.offer.version, provider: 'demo',
+        version: lead.offer.version, provider: 'demo', mode: checkoutModeForOffer(lead.offer),
       })) throw new WorkflowError('Could not record the simulated order.', 409);
       return privateRedirect(path + '#offer');
     }

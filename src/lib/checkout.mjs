@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { checkoutModeForOffer } from './offer.mjs';
 import { WorkflowError } from './prospect.mjs';
 
 export function checkoutMode() {
@@ -22,6 +23,27 @@ export function checkoutOrigin(value = process.env.SITEBEFORE_ORIGIN, dev = impo
   }
 }
 
+export function stripeCheckoutParams(lead, path, origin) {
+  const mode = checkoutModeForOffer(lead.offer);
+  return {
+    mode,
+    integration_identifier: 'sitebefore-checkout-jmfxcrtv',
+    adaptive_pricing: { enabled: false },
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: lead.data.currency.toLowerCase(),
+        unit_amount: lead.offer.amount,
+        ...(mode === 'subscription' ? { recurring: { interval: lead.offer.interval } } : {}),
+        product_data: { name: 'SiteBefore launch package' },
+      },
+    }],
+    success_url: origin + path + '?checkout=returned#offer',
+    cancel_url: origin + path + '?checkout=cancelled#offer',
+    metadata: { prospect_id: lead.id, attempt: lead.attempt, offer_version: lead.offer.version },
+  };
+}
+
 export async function startStripeCheckout(store, lead, path, origin) {
   const stripe = stripeClient();
   if (lead.checkout_id) {
@@ -31,22 +53,9 @@ export async function startStripeCheckout(store, lead, path, origin) {
     lead = await store.resetExpiredSession(lead.id, lead.attempt, existing.id);
     if (lead.paid_at || lead.checkout_id) return path + '?checkout=returned#offer';
   }
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    integration_identifier: 'sitebefore-checkout-jmfxcrtv',
-    adaptive_pricing: { enabled: false },
-    line_items: [{
-      quantity: 1,
-      price_data: {
-        currency: lead.data.currency.toLowerCase(),
-        unit_amount: lead.offer.amount,
-        product_data: { name: 'SiteBefore launch package' },
-      },
-    }],
-    success_url: origin + path + '?checkout=returned#offer',
-    cancel_url: origin + path + '?checkout=cancelled#offer',
-    metadata: { prospect_id: lead.id, attempt: lead.attempt, offer_version: lead.offer.version },
-  }, { idempotencyKey: 'sitebefore:' + lead.attempt });
+  const session = await stripe.checkout.sessions.create(stripeCheckoutParams(lead, path, origin), {
+    idempotencyKey: 'sitebefore:' + lead.attempt,
+  });
   if (!session.url || session.livemode) throw new WorkflowError('Test checkout is unavailable.', 502);
   await store.recordSession(lead.id, lead.attempt, session.id);
   return session.url;
@@ -56,15 +65,18 @@ function checkoutFromEvent(event, paymentStatus) {
   const session = event.data?.object;
   const meta = session?.metadata;
   const currency = session?.currency?.toUpperCase();
-  if (event.livemode !== false || session?.livemode !== false || session.mode !== 'payment' ||
+  if (event.livemode !== false || session?.livemode !== false || !['payment', 'subscription'].includes(session.mode) ||
       session.payment_status !== paymentStatus ||
       !session.id?.startsWith('cs_test_') || !meta?.prospect_id || !meta?.attempt ||
       !meta.offer_version || !Number.isSafeInteger(session.amount_total) || session.amount_total <= 0 ||
       !['USD', 'CAD'].includes(currency)) return null;
+  const subscription = session.mode === 'subscription' ? session.subscription : null;
+  const subscriptionId = typeof subscription === 'string' ? subscription : subscription?.id;
   return {
     id: meta.prospect_id, attempt: meta.attempt, sessionId: session.id,
     amount: session.amount_total, currency,
-    version: meta.offer_version, provider: 'stripe-test',
+    version: meta.offer_version, provider: 'stripe-test', mode: session.mode,
+    ...(typeof subscriptionId === 'string' && subscriptionId.startsWith('sub_') ? { subscriptionId } : {}),
   };
 }
 

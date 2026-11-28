@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import Brand from '../../components/Brand.astro';
 import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
-import { displayPrice } from '../../lib/offer.mjs';
+import { offersForApproval, offerTerms } from '../../lib/offer.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
 export const prerender = false;
@@ -176,7 +176,7 @@ function stage(lead) {
                 <h2>{name ?? 'New prospect'}</h2>
                 {selected && (
                   <p class="muted">
-                    {stage(selected)} · {displayPrice(selected.data.currency, selected.offer.amount)}
+                    {stage(selected)} · {offerTerms(selected.offer, selected.data.currency)}
                     <br />
                     <a href={selected.data.businessUrl} rel="noreferrer noopener" target="_blank">
                       Business source ↗
@@ -212,13 +212,21 @@ function stage(lead) {
                     <form class="stack" method="post" action={prospectAction}>
                       <input type="hidden" name="id" value={selected.id} />
                       <input type="hidden" name="revision" value={selected.revision} />
-                      <input type="hidden" name="offer_version" value={selected.offer.version} />
                       <div>
-                        <strong>Launch package · {displayPrice(selected.data.currency, selected.offer.amount)} one time</strong>
+                        <strong>Launch package</strong>
                         <ul>
                           {selected.offer.scope.map((item) => <li>{item}</li>)}
                         </ul>
                       </div>
+                      <fieldset>
+                        <legend>Offer to show on this preview</legend>
+                        {offersForApproval(selected.offer).map((offer, index) => (
+                          <label class="confirm">
+                            <input type="radio" name="offer_version" value={offer.version} checked={index === 0} required />
+                            {offerTerms(offer, selected.data.currency)}
+                          </label>
+                        ))}
+                      </fieldset>
                       <label class="confirm">
                         <input name="verified" type="checkbox" value="yes" required /> I checked the sources
                         and preview, confirmed the facts match this business, and reviewed the offer above.
@@ -250,6 +258,7 @@ function stage(lead) {
                         <small>
                           Order reference <code>{selected.receipt_id}</code>
                         </small>
+                        {selected.subscription_id && <small>Stripe subscription <code>{selected.subscription_id}</code></small>}
                         {selected.site_url ? (
                           <a href={selected.site_url} rel="noreferrer">Open published site</a>
                         ) : (
@@ -276,7 +285,7 @@ function stage(lead) {
                             rows="9"
                             aria-label="Pitch draft"
                             readonly
-                          >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency, selected.offer.amount)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
+                          >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${offerTerms(selected.offer, selected.data.currency)}. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
                         </details>
                         {!selected.attempt && (
                           <form method="post" action={prospectAction}>

@@ -1,13 +1,12 @@
 ---
-import { currentOffer, displayPrice } from '../lib/offer.mjs';
+import { currentOffer, displayPrice, offerTerms } from '../lib/offer.mjs';
 const { currency = 'USD', heading = 'Make this site yours', offer = currentOffer } = Astro.props;
 ---
 
 <div class="panel">
   <div>
     <p class="eyebrow">Launch package</p><h2>{heading}</h2><p class="total">
-      {displayPrice(currency, offer.amount)}
-      <span>one time</span>
+      {offer.interval ? offerTerms(offer, currency) : <>{displayPrice(currency, offer.amount)} <span>one time</span></>}
     </p>
   </div>
   <div><ul>{offer.scope.map((item) => <li>{item}</li>)}</ul><slot /></div>

@@ -26,9 +26,9 @@ A `service` fact can also include a `description` of up to 250 characters explai
 
 An optional `phone` fact sets a call link in the draft and approved preview. Use a public 10-digit US or Canadian business number, with optional `+1`, and quote that number in the source excerpt. Confirm the number is the intended contact destination before approval. Without a phone fact, the preview uses the existing business URL.
 
-Approving a preview also saves the quoted price and package scope. Existing buyer links keep those terms through checkout and delivery. If the offer changes while reviewing an open draft, reload the draft before approving it.
+At approval, choose the default $599 one-time offer or the $0-to-publish + $49/month offer (cancel anytime). US and Canadian businesses see the same amounts in USD and CAD, respectively. Approval saves the selected offer version, price and scope; the buyer preview, checkout and receipt show only those frozen terms. If the offer changes while reviewing an open draft, reload the draft before approving it.
 
-`npm test` includes a local HTTP rehearsal with the fictional prospect and a temporary database. It checks preview approval, checkout cancellation and retry, and the buyer receipt after delivery.
+`npm test` includes a local HTTP rehearsal with fictional prospects and a temporary database. It checks approval, checkout cancellation and retry, and receipts for both offers.
 
 ## Hosted review
 
@@ -45,6 +45,8 @@ The Vercel build uses on-demand Astro routes for the workspace and preview while
 On a protected Vercel preview, the browser sign-in and the Stripe webhook are separate requests. Configure an authorized sandbox webhook URL that can reach `/api/stripe-webhook` on the review deployment. When the project uses [Vercel Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation#other-webhook-services), store the generated URL only in the sandbox webhook configuration and keep Stripe signature verification enabled.
 
 For the hosted checkout check, approve the fictional prospect on the review hostname and complete Stripe test Checkout. Confirm that the Stripe sandbox reports a successful `204` delivery, the matching order appears on the buyer receipt, and resending that sandbox event leaves the same single order.
+
+Monthly Checkout charges the first $49 monthly payment at checkout with no separate publishing fee. Agency OS records the Stripe subscription ID when provided. The app has no cancellation UI or subscription lifecycle handling (including renewals, renewal failures, refunds, or cancellation webhooks). Before any live subscription use, establish a cancellation process; manage subscriptions directly in Stripe for sandbox review.
 
 To test with the Stripe CLI locally, use a dedicated Stripe sandbox. The app accepts the temporary claimable sandbox key issued by the CLI as well as standard test keys. Unset `SITEBEFORE_DEMO_CHECKOUT`, use the local server origin as `SITEBEFORE_ORIGIN`, and forward the same events with `stripe listen --forward-to localhost:4321/api/stripe-webhook`. Configure the listener's signing secret as `STRIPE_WEBHOOK_SECRET`. Use a Stripe test card and check that visiting the return page alone leaves the order pending. Replay the webhook and verify the same single order reference. Test mode uses hosted Stripe Checkout. Local simulation is available only during development.
 

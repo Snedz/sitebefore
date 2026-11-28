@@ -5,6 +5,7 @@ import PricePanel from '../../components/PricePanel.astro';
 import { demoBusinessUrl } from '../../data/demo-prospect.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 import { privateHeaders } from '../../lib/http.mjs';
+import { offerTerms } from '../../lib/offer.mjs';
 import { getStore, prospectSummary } from '../../lib/store.mjs';
 export const prerender = false;
 
@@ -46,6 +47,7 @@ const status = Astro.url.searchParams.get('checkout');
                 : 'Your order is in the launch queue. Keep this link for updates.'}
             </p>
             {lead.site_url && <a href={lead.site_url} rel="noreferrer">Open your published site</a>}
+            <p>Plan: {offerTerms(lead.offer, lead.data.currency)}</p>
             <small>
               Order reference <code>{lead.receipt_id}</code>
             </small>
