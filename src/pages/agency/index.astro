@@ -191,6 +191,7 @@ function stage(lead) {
                         <div class="fact">
                           <p class="eyebrow">{fact.field}</p>
                           <strong>{fact.value}</strong>
+                          {fact.description && <p>{fact.description}</p>}
                           <p class="quote">{fact.excerpt}</p>
                           <a href={fact.source} rel="noreferrer noopener" target="_blank">
                             Open source ↗
@@ -292,7 +293,8 @@ function stage(lead) {
                     <label for="prospect">Sourced dossier (JSON)</label>
                     <p id="dossier-help" class="muted">
                       Add verbatim facts with their HTTPS source, a matching excerpt and the date you checked
-                      it. Add optional headline and story facts when you have evidence for them.
+                      it. Add optional headline and story facts, or a <code>description</code> to a service
+                      fact, when the wording appears in the excerpt.
                     </p>
                     <textarea
                       id="prospect"

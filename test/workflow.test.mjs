@@ -31,6 +31,26 @@ test('dossiers reject unsupported claims and keep raw evidence out of preview da
   assert.throws(() => checkFreshness([{ field: 'location', checked: '2026-01-01' }], Date.parse('2026-02-02')), /Refresh/);
 });
 
+test('service descriptions must be sourced before they can reach an approved preview', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = makeDemoProspect();
+  const [service, nameOnly] = input.facts.filter(fact => fact.field === 'service');
+  service.description = 'Bring your mileage and service records.';
+  assert.throws(() => normalizeProspect(input), /service description must appear/);
+  service.excerpt += `\n${service.description}\nInternal evidence note.`;
+  input.facts.push({ ...service });
+  const id = await db.save(input);
+  await db.release(id, 1);
+  const approved = await db.find(id);
+  const profile = publicProfile((await db.publicLead(approved.share_token)).data);
+  assert.deepEqual(profile.services.filter(row => row.name === service.value), [
+    { name: service.value, description: service.description },
+  ]);
+  assert.ok(profile.services.some(row => row.name === nameOnly.value && row.description === undefined));
+  assert.ok(!JSON.stringify(profile).includes('Internal evidence note.'));
+});
+
 test('an operator form can carry a full multilingual dossier', async () => {
   const input = makeDemoProspect();
   while (input.facts.length < 16) input.facts.push(input.facts.find(fact => fact.field === 'service'));

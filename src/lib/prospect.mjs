@@ -15,6 +15,8 @@ function clean(value, max, label) {
   return value.trim();
 }
 
+const normalizeEvidenceText = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
+
 export function normalizeProspect(input) {
   if (!input || typeof input !== 'object' || !['USD', 'CAD'].includes(input.currency)) {
     throw new WorkflowError('Set the prospect currency to USD or CAD.');
@@ -32,9 +34,16 @@ export function normalizeProspect(input) {
     seen.add(field);
     const value = clean(row.value, field === 'story' || field === 'intro' ? 500 : 110, field);
     const excerpt = clean(row.excerpt, 1500, 'Evidence excerpt');
-    const normalized = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
-    if (!normalized(excerpt).includes(normalized(value))) {
+    const evidenceText = normalizeEvidenceText(excerpt);
+    if (!evidenceText.includes(normalizeEvidenceText(value))) {
       throw new WorkflowError(`The ${field} value must appear in its evidence excerpt.`);
+    }
+    let description;
+    if (field === 'service' && row.description !== undefined) {
+      description = clean(row.description, 250, 'Service description');
+      if (!evidenceText.includes(normalizeEvidenceText(description))) {
+        throw new WorkflowError('The service description must appear in its evidence excerpt.');
+      }
     }
     const source = clean(row.source, 1000, 'Evidence URL');
     let url;
@@ -48,7 +57,7 @@ export function normalizeProspect(input) {
         retrieved.toISOString().slice(0, 10) !== checked) {
       throw new WorkflowError('Use an evidence date in YYYY-MM-DD format.');
     }
-    return { field, value, source: url.href, excerpt, checked };
+    return { field, value, source: url.href, excerpt, checked, ...(description && { description }) };
   });
   if (required.some(field => !seen.has(field))) {
     throw new WorkflowError('Include the business name, location, trade, intro and at least one service.');
@@ -73,8 +82,14 @@ export function checkFreshness(facts, now = Date.now()) {
 }
 
 export function publicProfile(prospect) {
+  const services = new Map();
+  for (const { field, value, description } of prospect.facts) {
+    if (field === 'service' && (!services.has(value) || !services.get(value).description)) {
+      services.set(value, { name: value, description });
+    }
+  }
   return {
     ...Object.fromEntries(prospect.facts.filter(item => item.field !== 'service').map(item => [item.field, item.value])),
-    services: [...new Set(prospect.facts.filter(item => item.field === 'service').map(item => item.value))],
+    services: [...services.values()],
   };
 }

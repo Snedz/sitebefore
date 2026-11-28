@@ -62,7 +62,14 @@ const shopName = sample ? 'Juniper' : profile.name;
             ))}
           </div>
         ) : (
-          <ul class="service-list">{profile.services.map((service) => <li>{service}</li>)}</ul>
+          <ul class="service-list">
+            {profile.services.map(({ name, description }) => (
+              <li>
+                {name}
+                {description && <p>{description}</p>}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
       {profile.story && (
@@ -187,6 +194,7 @@ const shopName = sample ? 'Juniper' : profile.name;
   .choices summary:hover, .choices details[open] summary, .answer .label { color: #8e341d; }
   .answer { display: grid; gap: 6px; padding: 0 8px 22px; max-width: 58ch; }
   .service-list { margin: 0; padding: 0; list-style: none; }
+  .service-list p { font: 400 1rem/1.5 var(--body); margin-top: 8px; max-width: 55ch; }
   .story { background: #e8dfd1; }
   .story-grid { display: grid; align-items: center; gap: clamp(24px, 5vw, 78px); }
   .story-grid.has-image { grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr); }

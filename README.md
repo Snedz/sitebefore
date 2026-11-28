@@ -22,6 +22,8 @@ Open `/agency/`, sign in with that key, and choose **Add fictional demo**. Revie
 
 For a real dossier, paste JSON containing `currency` (`USD` or `CAD`), `businessUrl` (one stable HTTPS page or listing specific to this business), and `facts`. Each fact has a `field`, `value`, `source`, `excerpt` and `checked` (YYYY-MM-DD). Required fields are `name`, `location`, `trade`, `intro` and at least one `service`; `headline` and `story` are optional. Evidence must contain the quoted wording and be no more than 30 days old at approval. The operator checks that the source is genuine, applies to the business, and supports the claim in context. Remove unsupported claims and keep raw evidence inside Agency OS.
 
+A `service` fact can also include a `description` of up to 250 characters explaining what that service covers or how to get started. The same `excerpt` must contain the service name and description. The description appears in the draft and, once approved, in the buyer preview.
+
 ## Hosted review
 
 The Vercel build uses on-demand Astro routes for the workspace and preview while keeping the storefront static. Set these in the review environment. A review can show the storefront and sample without any configuration.
