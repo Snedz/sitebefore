@@ -128,4 +128,41 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(delivered.html, /marked this order delivered/);
   assert.ok(delivered.html.includes(`href="${site}"`));
   assert.equal(delivered.html.match(receiptReference)?.[1], reference);
+
+  const listing = 'https://example.com/import-fixture';
+  const retrieved = new Date().toISOString();
+  const fact = value => ({ value, source: listing, retrieved, excerpt: value });
+  const importedFacts = {
+    name: fact('Imported Fictional Workshop'), city: fact('Dallas'),
+    category: fact('Auto repair shop'), intro: fact('Imported fixture introduction.'),
+    service: fact('Wheel alignment'), maps_url: fact(listing),
+  };
+  const form = { action: 'import-dossier', dossier_export: JSON.stringify({ currency: 'USD', facts: importedFacts }) };
+  const denied = await request('/api/agency', 303, { form });
+  assert.equal(denied.location, '/agency/?notice=signin');
+  const invalid = await request('/api/agency', 400, { cookie, form: {
+    ...form, dossier_export: JSON.stringify({ currency: 'USD', facts: {
+      ...importedFacts, intro: { ...importedFacts.intro, excerpt: undefined },
+      service: { ...importedFacts.service, source: 'http://example.com/' },
+    } }),
+  } });
+  assert.match(invalid.html, /intro: provide a captured excerpt/);
+  assert.match(invalid.html, /service: missing or invalid HTTPS source URL/);
+  assert.doesNotMatch((await request('/agency/', 200, { cookie })).html, /Imported Fictional Workshop/);
+  const imported = await agency(form);
+  const importedId = new URL(imported.location, origin).searchParams.get('lead');
+  assert.ok(importedId);
+  assert.equal((await agency(form)).location, imported.location);
+  const workspace = await request(imported.location, 200, { cookie });
+  assert.match(workspace.html, /Latest 67 import/);
+  assert.ok(/Source SHA-256:\s*<code\b[^>]*>[a-f0-9]{64}<\/code>/.test(workspace.html));
+  assert.ok(workspace.html.includes(retrieved));
+  await agency({ action: 'release', id: importedId, revision: '1', verified: 'yes', offer_version: currentOffer.version });
+  const importedPreview = (await request(imported.location, 200, { cookie })).html.match(/\/p\/[A-Za-z0-9_-]{32}\//)?.[0];
+  assert.ok(importedPreview);
+  const buyer = await request(importedPreview, 200);
+  assert.match(buyer.html, /Wheel alignment/);
+  assert.doesNotMatch(buyer.html, /Latest 67 import|Source SHA-256/);
+  assert.ok(!buyer.html.includes(retrieved));
+  await request('/api/agency', 409, { form, cookie });
 });

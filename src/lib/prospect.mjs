@@ -1,5 +1,5 @@
 const singleFields = ['name', 'location', 'trade', 'headline', 'intro', 'story', 'phone'];
-const required = ['name', 'location', 'trade', 'intro', 'service'];
+export const requiredProspectFields = ['name', 'location', 'trade', 'intro', 'service'];
 
 export class WorkflowError extends Error {
   constructor(message, status = 400) {
@@ -15,7 +15,10 @@ function clean(value, max, label) {
   return value.trim();
 }
 
-const normalizeEvidenceText = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
+export const normalizeEvidenceText = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
+
+export const isEvidenceDay = day => /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+  Number.isFinite(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
 
 export function businessPhoneLink(value) {
   if (typeof value !== 'string') return null;
@@ -64,14 +67,12 @@ export function normalizeProspect(input) {
       throw new WorkflowError('Evidence needs an HTTPS URL without credentials.');
     }
     const checked = clean(row.checked, 10, 'Evidence date');
-    const retrieved = new Date(checked + 'T00:00:00.000Z');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(checked) || !Number.isFinite(+retrieved) ||
-        retrieved.toISOString().slice(0, 10) !== checked) {
+    if (!isEvidenceDay(checked)) {
       throw new WorkflowError('Use an evidence date in YYYY-MM-DD format.');
     }
     return { field, value, source: url.href, excerpt, checked, ...(description && { description }) };
   });
-  if (required.some(field => !seen.has(field))) {
+  if (requiredProspectFields.some(field => !seen.has(field))) {
     throw new WorkflowError('Include the business name, location, trade, intro and at least one service.');
   }
   const contactUrl = clean(input.businessUrl, 500, 'Business URL');
@@ -80,8 +81,19 @@ export function normalizeProspect(input) {
   if (business.protocol !== 'https:' || business.username || business.password) {
     throw new WorkflowError('Add an HTTPS business or booking URL without credentials.');
   }
-  const businessKey = business.hostname.replace(/^www\./, '') + business.pathname.replace(/\/+$/, '');
-  return { currency: input.currency, businessUrl: business.href, businessKey, facts };
+  return { currency: input.currency, businessUrl: business.href, businessKey: businessKeys(business).key, facts };
+}
+
+export function businessKeys(business) {
+  const host = business.hostname.replace(/^www\./, '');
+  const path = business.pathname.replace(/\/+$/, '');
+  const isMapsListing = /^maps\.google\.(com|ca)$/.test(host) ||
+    (/^google\.(com|ca)$/.test(host) && /^\/maps(?:\/|$)/.test(path));
+  const identityParam = isMapsListing && ['cid', 'place_id', 'q'].find(param => business.searchParams.get(param));
+  const legacy = host + path;
+  const key = legacy + (identityParam
+    ? '?' + new URLSearchParams([[identityParam, business.searchParams.get(identityParam)]]) : '');
+  return { key, legacy };
 }
 
 export function checkFreshness(facts, now = Date.now()) {

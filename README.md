@@ -26,6 +26,14 @@ A `service` fact can also include a `description` of up to 250 characters explai
 
 An optional `phone` fact sets a call link in the draft and approved preview. Use a public 10-digit US or Canadian business number, with optional `+1`, and quote that number in the source excerpt. Confirm the number is the intended contact destination before approval. Without a phone fact, the preview uses the existing business URL.
 
+### Import a grounded 67 lead export
+
+In Agency OS, open **Import a grounded 67 export** and paste a lead JSON document. Set `currency` to `USD` or `CAD`. Under `facts`, each key holds a typed fact with `value`, HTTPS `source`, `retrieved` (a date or an ISO timestamp with timezone), and a verbatim `excerpt`. Use arrays for multiple facts under the same key, including multiple services. Sources must be current, the quote must contain the value, and conflicting values for a single field are rejected. A blank optional snapshot field is not a fact.
+
+The importer maps `location`, `address` or `city` to location, `trade` or `category` to trade, and uses the sourced `maps_url` (or `website` if no listing is supplied) as the business URL. `intro` and `service` (or `services`) must be sourced; extra evidence is kept privately, not published. The archived November 24 snapshots do not include excerpts, intro or services, and must be re-captured and completed from genuine sources before import. Do not use generated preview HTML as evidence.
+
+Imports do not release previews. Pasting the same export text again is a no-op for a draft; a different valid export for the same business replaces its draft and increments its revision. Imports refuse released previews and paid orders. Agency OS records a private import ID and SHA-256 of the submitted JSON text. Operators still verify the original sources and approve the preview.
+
 Approving a preview also saves the quoted price and package scope. Existing buyer links keep those terms through checkout and delivery. If the offer changes while reviewing an open draft, reload the draft before approving it.
 
 `npm test` includes a local HTTP rehearsal with the fictional prospect and a temporary database. It checks preview approval, checkout cancellation and retry, and the buyer receipt after delivery.

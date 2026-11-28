@@ -6,6 +6,7 @@ import test from 'node:test';
 import { createClient } from '@libsql/client';
 import Stripe from 'stripe';
 import { createStore } from '../src/lib/store.mjs';
+import { parseDossierExport } from '../src/lib/dossier-import.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
@@ -13,6 +14,211 @@ import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verif
 import { readForm } from '../src/lib/http.mjs';
 
 const { version: offerVersion, amount: price } = currentOffer;
+
+function exportFixture(retrieved = new Date().toISOString().slice(0, 10)) {
+  const source = 'https://example.com/maps/place/gm-auto-care';
+  const fact = value => ({ value, source, retrieved, excerpt: value });
+  return {
+    slug: 'gm-auto-care-mesquite', niche: 'auto_repair', currency: 'USD',
+    facts: {
+      name: fact('GM Auto Care'), city: fact('Mesquite'),
+      address: fact('2301 N Galloway Ave, Mesquite, TX 75150'), phone: fact('(469) 687-5439'),
+      maps_url: fact(source), category: fact('Auto repair shop'), website: { value: '', source, retrieved },
+      intro: fact('Fixture introduction for workflow testing.'), service: [fact('Fixture service')],
+    },
+  };
+}
+
+test('different Google Maps cids import as separate businesses without tracking parameters affecting identity', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = exportFixture();
+  const listing = (cid, suffix = '') => {
+    const value = `https://www.google.com/maps?cid=${cid}${suffix}`;
+    input.facts.maps_url = { ...input.facts.maps_url, value, excerpt: value };
+    return JSON.stringify(input);
+  };
+  const first = await db.importDossier(listing(111));
+  const second = await db.importDossier(listing(222));
+  assert.notEqual(second, first);
+  assert.equal(await db.importDossier(listing(111, '&hl=en')), first);
+  assert.equal((await db.list()).leads.length, 2);
+  const prospect = makeDemoProspect();
+  assert.equal(normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=111' }).businessKey,
+    normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=222' }).businessKey);
+});
+
+test('imports honor released prospects and drafts stored under legacy Maps keys', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'sitebefore-legacy-import-'));
+  const url = 'file:' + join(directory, 'orders.db');
+  const db = await createStore({ url });
+  const sql = createClient({ url });
+  t.after(() => { sql.close(); db.close(); rmSync(directory, { recursive: true, force: true }); });
+  const fixture = (path, cid) => {
+    const input = exportFixture();
+    const value = `https://www.google.com${path}${cid ? '?cid=' + cid : ''}`;
+    input.facts.maps_url = { ...input.facts.maps_url, value, excerpt: value };
+    return JSON.stringify(input);
+  };
+  const old = await db.save(parseDossierExport(fixture('/maps', 111)).dossier);
+  await sql.execute({ sql: 'UPDATE prospects SET business_key = ? WHERE id = ?', args: ['google.com/maps', old] });
+  await db.release(old, 1);
+  await assert.rejects(db.importDossier(fixture('/maps', 111)), { status: 409 });
+  assert.equal((await db.list()).leads.length, 1);
+  assert.notEqual(await db.importDossier(fixture('/maps', 222)), old);
+
+  const draft = await db.save(parseDossierExport(fixture('/maps/place/fixture')).dossier);
+  assert.equal(await db.importDossier(fixture('/maps/place/fixture', 333)), draft);
+  assert.equal((await db.find(draft)).business_key, 'google.com/maps/place/fixture?cid=333');
+  assert.equal((await db.list()).leads.length, 3);
+});
+
+test('an explicit location and city must agree', () => {
+  const input = exportFixture();
+  input.facts.location = { ...input.facts.city };
+  delete input.facts.address;
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  for (const location of ['MESQUITE  TX', 'Dallas County, Mesquite, TX']) {
+    input.facts.location.value = input.facts.location.excerpt = location;
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  }
+  input.facts.location.value = input.facts.location.excerpt = 'Mesquite TX';
+  input.facts.city = { ...input.facts.city, value: 'Dallas', excerpt: 'Dallas' };
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /location, city: contradictory values for location/);
+});
+
+test('URL evidence ignores scheme and host case but preserves the exact path and query', () => {
+  const input = exportFixture();
+  const source = input.facts.maps_url.source;
+  const retrieved = input.facts.maps_url.retrieved;
+  const value = 'HTTPS://EXAMPLE.COM/Listing?Ref=ABC';
+  const excerpt = 'Captured URL: https://example.com/Listing?Ref=ABC';
+  input.facts.maps_url = { value, excerpt, source, retrieved };
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  for (const suffix of ['.', ',', ')', ';', ':', '!', '?', '"', "'", '.)"']) {
+    input.facts.maps_url.excerpt = excerpt + suffix + ' Next sentence.';
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  }
+  for (const changed of [
+    'https://example.com/listing?Ref=ABC',
+    'https://example.com/Listing?Ref=abc',
+    'https://example.com/Listing?Ref=ABCD',
+  ]) {
+    input.facts.maps_url.excerpt = changed;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url: the fact value does not appear in the excerpt/);
+  }
+  input.facts.maps_url = [
+    { value, excerpt, source, retrieved },
+    { value: 'https://example.com/listing?Ref=ABC', excerpt: 'https://example.com/listing?Ref=ABC', source, retrieved },
+  ];
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url\[1\], maps_url\[2\]: contradictory values for maps_url/);
+  input.facts.maps_url[1].value = input.facts.maps_url[1].excerpt = 'https://example.com/Listing?Ref=ABC';
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+});
+
+test('URL evidence finds exact matches at compact JSON delimiters or sentence punctuation', () => {
+  const input = exportFixture();
+  const value = 'https://x.com/a';
+  for (const excerpt of [
+    '{"website":"https://x.com/a","phone":"469-687-5439"}',
+    "website='https://x.com/a',phone='469-687-5439'",
+    'website=`https://x.com/a`,phone=469-687-5439',
+    '<https://x.com/a>next',
+    '(https://x.com/a) next',
+    '“https://x.com/a”',
+    '‘https://x.com/a.’',
+    '[https://x.com/a]',
+    '[https://x.com/a.]',
+    'The website is https://x.com/a. Call for details.',
+  ]) {
+    input.facts.website = { ...input.facts.maps_url, value, excerpt };
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)), excerpt);
+  }
+  for (const suffix of ['[next]', '{next}', ')next', '/next', '?next=1', '&next=1', 'next']) {
+    input.facts.website.excerpt = value + suffix;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /website: the fact value does not appear in the excerpt/);
+  }
+  for (const prefix of ['https://referrer.example/?ref=', 'https://referrer.example/', 'x&', 'x']) {
+    input.facts.website.excerpt = prefix + value;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /website: the fact value does not appear in the excerpt/);
+  }
+});
+
+test('a Maps URL containing parentheses matches exactly but does not substantiate its prefix', () => {
+  const input = exportFixture();
+  const prefix = 'https://www.google.com/maps/place/Fixture';
+  const value = prefix + '(Downtown)/data?cid=111';
+  const excerpt = 'The listing is ' + value + '.';
+  input.facts.maps_url = { ...input.facts.maps_url, value, excerpt };
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  input.facts.maps_url.value = prefix;
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url: the fact value does not appear in the excerpt/);
+});
+
+test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
+  const clock = Date.parse('2026-11-28T12:00:00Z');
+  const retrieved = '2026-11-01T15:45:00-05:00';
+  const input = exportFixture(retrieved);
+  const raw = JSON.stringify(input);
+  const { dossier, sourceHash, evidence } = parseDossierExport(raw, clock);
+  assert.match(sourceHash, /^[a-f0-9]{64}$/);
+  assert.equal(dossier.businessUrl, input.facts.maps_url.value);
+  assert.deepEqual(dossier.facts.find(fact => fact.field === 'location'), {
+    ...input.facts.address, field: 'location', checked: '2026-11-01',
+  });
+  assert.ok(evidence.some(fact => fact.field === 'city'));
+  assert.throws(() => parseDossierExport('', clock), /valid JSON/);
+  assert.throws(() => parseDossierExport('{"facts":{}}', clock), /intro: required sourced fact is missing/);
+  assert.throws(() => parseDossierExport(raw.replace('"city":', '"name":{},"city":'), clock), /"name": duplicate JSON key/);
+  input.facts.address = [input.facts.address, { ...input.facts.address,
+    value: '3115 N. Central Expressway, Suite 120, Dallas', excerpt: '3115 N. Central Expressway, Suite 120, Dallas' }];
+  input.facts.phone = [input.facts.phone, { ...input.facts.phone,
+    value: '(214) 555-0144', excerpt: 'Factory fixture did not substantiate the number.' }];
+  input.facts.name.retrieved = '2026-10-19';
+  input.facts.city.source = 'http://example.com/listing';
+  delete input.facts.category.source;
+  delete input.facts.intro.excerpt;
+  assert.throws(() => parseDossierExport(JSON.stringify(input), clock), error => {
+    for (const message of [
+      'Refresh the name evidence', 'address[1], address[2]: contradictory values for location',
+      'phone[1], phone[2]: contradictory values for phone', 'phone[2]: the fact value does not appear in the excerpt',
+      'city: missing or invalid HTTPS source URL', 'category: missing or invalid HTTPS source URL',
+      'intro: provide a captured excerpt',
+    ]) assert.ok(error.message.includes(message), message);
+    return error.status === 400;
+  });
+});
+
+test('import deduplicates drafts by hash and business, and never alters a released prospect', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = exportFixture();
+  const raw = JSON.stringify(input);
+  const id = await db.importDossier(raw);
+  const firstImport = await db.latestDossierImport(id);
+  assert.equal(firstImport.source_hash, parseDossierExport(raw).sourceHash);
+  assert.equal(await db.importDossier(raw), id);
+  assert.equal((await db.find(id)).revision, 1);
+  assert.deepEqual(await db.latestDossierImport(id), firstImport);
+  const outdated = exportFixture('2026-10-19');
+  await assert.rejects(db.importDossier(JSON.stringify(outdated)), /maximum age 30 days/);
+  assert.deepEqual(await db.latestDossierImport(id), firstImport);
+  input.facts.intro.value = input.facts.intro.excerpt = 'Updated fixture introduction.';
+  const revised = JSON.stringify(input);
+  assert.equal(await db.importDossier(revised), id);
+  assert.equal((await db.find(id)).revision, 2);
+  const secondImport = await db.latestDossierImport(id);
+  assert.notEqual(secondImport.id, firstImport.id);
+  assert.equal(await db.importDossier(raw), id);
+  assert.equal((await db.find(id)).data.facts.find(fact => fact.field === 'intro').value, 'Updated fixture introduction.');
+  await db.release(id, 2);
+  const before = await db.find(id);
+  await assert.rejects(db.importDossier(revised), { status: 409 });
+  await assert.rejects(db.importDossier(revised + '\n'), { status: 409 });
+  assert.deepEqual(await db.find(id), before);
+  assert.deepEqual(await db.latestDossierImport(id), secondImport);
+  assert.equal((await db.list()).leads.length, 1);
+});
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');
