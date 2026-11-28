@@ -18,11 +18,12 @@ function clean(value, max, label) {
 const normalizeEvidenceText = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
 
 export function businessPhoneLink(value) {
-  if (typeof value !== 'string' ||
-      !/^(?:\+?1[ .-]?)?(?:\([2-9]\d{2}\)|[2-9]\d{2})[ .-]?[2-9]\d{2}[ .-]?\d{4}$/.test(value)) {
+  if (typeof value !== 'string') return null;
+  const number = value.replace(/[\u2010-\u2013]/g, '-').replace(/[\u00A0\u202F]/g, ' ');
+  if (!/^(?:\+?1[ .-]?)?(?:\([2-9]\d{2}\)|[2-9]\d{2})[ .-]?[2-9]\d{2}[ .-]?\d{4}$/.test(number)) {
     return null;
   }
-  return 'tel:+1' + value.replace(/\D/g, '').slice(-10);
+  return 'tel:+1' + number.replace(/\D/g, '').slice(-10);
 }
 
 export function normalizeProspect(input) {

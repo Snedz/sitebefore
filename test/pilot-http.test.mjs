@@ -80,7 +80,7 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const originalDraft = await request(draftPath, 200, { cookie });
   assert.doesNotMatch(originalDraft.html, /href="tel:/);
   const dossier = makeDemoProspect();
-  const phone = '(214) 555-0142';
+  const phone = '(214)\u00A0555\u20110142';
   const phoneLink = /href="tel:\+12145550142"/;
   const privateNote = 'Fixture phone evidence for operator review.';
   dossier.facts.push({
