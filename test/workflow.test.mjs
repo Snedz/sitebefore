@@ -29,6 +29,25 @@ function exportFixture(retrieved = new Date().toISOString().slice(0, 10)) {
   };
 }
 
+test('different Google Maps cids import as separate businesses without tracking parameters affecting identity', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = exportFixture();
+  const listing = (cid, suffix = '') => {
+    const value = `https://www.google.com/maps?cid=${cid}${suffix}`;
+    input.facts.maps_url = { ...input.facts.maps_url, value, excerpt: value };
+    return JSON.stringify(input);
+  };
+  const first = await db.importDossier(listing(111));
+  const second = await db.importDossier(listing(222));
+  assert.notEqual(second, first);
+  assert.equal(await db.importDossier(listing(111, '&hl=en')), first);
+  assert.equal((await db.list()).leads.length, 2);
+  const prospect = makeDemoProspect();
+  assert.equal(normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=111' }).businessKey,
+    normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=222' }).businessKey);
+});
+
 test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
   const clock = Date.parse('2026-11-28T12:00:00Z');
   const retrieved = '2026-11-01T15:45:00-05:00';
