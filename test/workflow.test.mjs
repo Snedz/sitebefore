@@ -95,6 +95,45 @@ test('approval binds to the reviewed revision and revoking reopens the draft', a
   assert.notEqual((await db.find(id)).share_token, approved.share_token);
 });
 
+test('an expired preview can be extended with fresh evidence, then revoked during checkout', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'sitebefore-preview-expiry-'));
+  const url = 'file:' + join(directory, 'orders.db');
+  const db = await createStore({ url });
+  const fixture = createClient({ url });
+  t.after(() => { fixture.close(); db.close(); rmSync(directory, { recursive: true, force: true }); });
+  const id = await db.save(makeDemoProspect());
+  await db.release(id, 1);
+  const { share_token: token } = await db.find(id);
+  await fixture.execute({
+    sql: 'UPDATE prospects SET approved_at = ? WHERE id = ?',
+    args: [new Date(Date.now() - 30 * 86400000).toISOString(), id],
+  });
+  assert.ok(!await db.publicLead(token));
+  await assert.rejects(db.reserveAttempt(id, token), { status: 404 });
+  assert.equal((await db.find(id)).attempt, null);
+  assert.equal((await db.counts()).shared, 0);
+  await assert.rejects(db.extend(id, 2), /changed/);
+  await db.extend(id, 1);
+  const { attempt } = await db.reserveAttempt(id, token);
+  assert.ok(await db.publicLead(token));
+  await db.recordSession(id, attempt, 'revoked-checkout');
+  await db.revoke(id);
+  assert.ok(!await db.publicLead(token));
+  assert.ok(!await db.publicReceipt(token));
+  await assert.rejects(db.reserveAttempt(id, token), { status: 404 });
+  await assert.rejects(db.recordSession(id, attempt, 'revoked-checkout'), /changed/);
+  const reopened = await db.find(id);
+  assert.equal(reopened.checkout_id, null);
+  assert.equal(reopened.attempt, null);
+  assert.equal(await db.pay({
+    id, attempt, sessionId: 'revoked-checkout', amount: price, currency: 'USD',
+    version: offerVersion, provider: 'stripe-test',
+  }), false);
+  await db.release(id, reopened.revision);
+  assert.notEqual((await db.find(id)).share_token, token);
+  assert.ok(!await db.publicLead(token));
+});
+
 test('released and legacy previews keep their terms across an offer change', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'sitebefore-offer-change-'));
   const url = 'file:' + join(directory, 'orders.db');
@@ -173,7 +212,6 @@ test('duplicate orders converge, stale checkout cannot fulfill, and receipt pers
   const { share_token: token } = await db.find(id);
   const [started, retry] = await Promise.all([db.reserveAttempt(id, token), db.reserveAttempt(id, token)]);
   assert.equal(started.attempt, retry.attempt);
-  await assert.rejects(db.revoke(id), /checkout attempt/);
   await db.recordSession(id, started.attempt, 'old');
   const current = await db.resetExpiredSession(id, started.attempt, 'old');
   const order = {
@@ -204,6 +242,14 @@ test('duplicate orders converge, stale checkout cannot fulfill, and receipt pers
   assert.ok(deliveredAt);
   assert.equal(receipt.delivered_at, deliveredAt);
   assert.equal(receipt.site_url, siteUrl);
+  await db.revoke(id);
+  assert.ok(!await db.publicLead(token));
+  assert.equal((await db.find(id)).receipt_id, 'new');
+  assert.equal((await db.publicReceipt(token)).site_url, siteUrl);
+  assert.equal((await db.counts()).drafts, 0);
+  assert.equal((await db.counts()).delivered, 1);
+  assert.ok(await db.pay(order));
+  await assert.rejects(db.save(input, id, (await db.find(id)).revision), /approved/);
 });
 
 test('an older delivered order can add its published site without changing the receipt date', async t => {
@@ -302,4 +348,37 @@ test('only signed, paid Stripe sandbox events can become order candidates', () =
     if (oldWebhook === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
     else process.env.STRIPE_WEBHOOK_SECRET = oldWebhook;
   }
+});
+
+test('unmatched paid sessions are listed once without creating orders', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  assert.deepEqual(await db.paymentsToReconcile(), []);
+  const id = await db.save(makeDemoProspect());
+  await db.release(id, 1);
+  const { share_token: token } = await db.find(id);
+  const { attempt } = await db.reserveAttempt(id, token);
+  const event = { id, attempt, sessionId: 'cs_test_wrong_amount', amount: price - 1,
+    currency: 'USD', version: offerVersion, provider: 'stripe-test' };
+  const cases = [
+    [event, 'Amount, currency or offer does not match'],
+    [{ ...event, sessionId: 'cs_test_wrong_offer', amount: price, version: 'older' }, 'Amount, currency or offer does not match'],
+    [{ ...event, sessionId: 'cs_test_stale_attempt', attempt: 'stale', amount: price }, 'Checkout attempt is no longer current'],
+    [{ ...event, sessionId: 'cs_test_unknown_prospect', id: 'not-found' }, 'Prospect not found'],
+  ];
+  for (const [payment] of cases) {
+    assert.equal(await db.pay(payment), false);
+    await Promise.all([db.recordPaymentMismatch(payment), db.recordPaymentMismatch(payment)]);
+  }
+  const items = await db.paymentsToReconcile();
+  assert.equal(items.length, cases.length);
+  for (const [payment, reason] of cases) {
+    const item = items.find(row => row.checkout_id === payment.sessionId);
+    assert.equal(item.reason, reason);
+    assert.equal(item.amount, payment.amount);
+    assert.equal(item.offer_version, payment.version);
+    assert.equal(item.known_prospect, payment.id === id ? id : null);
+  }
+  assert.equal((await db.find(id)).paid_at, null);
+  assert.equal((await db.counts()).queued, 0);
 });

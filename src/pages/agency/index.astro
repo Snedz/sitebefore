@@ -2,7 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import Brand from '../../components/Brand.astro';
 import { isOperator, operatorKey, privateHeaders } from '../../lib/http.mjs';
-import { getStore, prospectSummary } from '../../lib/store.mjs';
+import { getStore, previewExpiresAt, previewIsActive, prospectSummary } from '../../lib/store.mjs';
 import { displayPrice } from '../../lib/offer.mjs';
 import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
 import { agencyPage, agencyPath } from '../../lib/agency-routing.mjs';
@@ -16,6 +16,7 @@ const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
   selected,
   counts,
+  reconciliation = [],
   hasNext = false,
   showDemo = false,
   unavailable = false;
@@ -23,16 +24,18 @@ if (operator) {
   try {
     const store = await getStore();
     const id = Astro.url.searchParams.get('lead');
-    const [list, totals, lead, demoExists] = await Promise.all([
+    const [list, totals, lead, demoExists, unmatched] = await Promise.all([
       store.list(page),
       store.counts(),
       id ? store.find(id) : null,
       checkoutMode() === 'demo' ? store.hasBusiness('example.com/juniper-motor-works') : true,
+      store.paymentsToReconcile(),
     ]);
     ({ leads, hasNext } = list);
     counts = totals;
     selected = lead;
     showDemo = !demoExists;
+    reconciliation = unmatched;
   } catch {
     unavailable = true;
     Astro.response.status = 503;
@@ -45,7 +48,7 @@ const stats = [
   ['Delivered', counts?.delivered],
 ];
 const name = selected && prospectSummary(selected).name;
-const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
+const previewPath = previewIsActive(selected) && '/p/' + selected.share_token + '/';
 const previewURL = previewPath && new URL(previewPath, checkoutOrigin() ?? Astro.url.origin).href;
 const pitchFact =
   selected?.data.facts.find((fact) => fact.field === 'story') ??
@@ -66,7 +69,7 @@ const prospectInput = selected?.data ?? {
 function stage(lead) {
   if (lead.delivered_at) return 'Delivered';
   if (lead.paid_at) return 'In launch queue';
-  if (lead.share_token) return 'Preview released';
+  if (lead.share_token) return previewIsActive(lead) ? 'Preview released' : 'Preview expired';
   return 'Evidence review';
 }
 ---
@@ -136,6 +139,29 @@ function stage(lead) {
                 </div>
               ))}
             </section>
+            <section class="panel stack" aria-labelledby="reconciliation-title">
+              <h2 id="reconciliation-title">Payments needing reconciliation</h2>
+              {reconciliation.length === 0 ? <p class="muted">No unmatched Stripe payments.</p> : (
+                <>
+                  <p class="muted">Verify these payments in Stripe before fulfilling. They do not create orders.</p>
+                  <ul class="stack">
+                    {reconciliation.map(payment => (
+                      <li>
+                        <strong>{payment.reason}</strong> · {displayPrice(payment.currency, payment.amount)}
+                        <div>Stripe session <code>{payment.checkout_id}</code></div>
+                        <div>
+                          {payment.known_prospect
+                            ? <a href={agencyPath(page, payment.known_prospect) + '#dossier'}>Open prospect</a>
+                            : <>Prospect <code>{payment.prospect_id}</code></>}
+                          {' · Offer '}{payment.offer_version}
+                          {' · '}<time datetime={payment.received_at}>{payment.received_at.slice(0, 10)} UTC</time>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
             <div class="workspace">
               <section class="panel prospects stack" id="prospects">
                 <div class="list-head">
@@ -202,7 +228,7 @@ function stage(lead) {
                     </div>
                   </details>
                 )}
-                {selected && !previewPath && (
+                {selected && !selected.share_token && !selected.paid_at && (
                   <div class="stack">
                     <p>
                       <a href={`/agency/draft/${selected.id}/`} target="_blank" rel="noopener">
@@ -229,14 +255,33 @@ function stage(lead) {
                     </form>
                   </div>
                 )}
-                {previewPath ? (
+                {selected?.share_token && (
                   <>
-                    <a class="button outline" href={previewURL}>
-                      Open buyer preview ↗
-                    </a>
-                    <label class="stack">
-                      Private link <input type="text" value={previewURL} readonly />
-                    </label>
+                    {previewPath ? (
+                      <>
+                        <a class="button outline" href={previewURL}>Open buyer preview ↗</a>
+                        <label class="stack">
+                          Private link <input type="text" value={previewURL} readonly />
+                        </label>
+                        <p class="muted">Expires <time datetime={previewExpiresAt(selected)}>{previewExpiresAt(selected).slice(0, 10)} UTC</time>.</p>
+                      </>
+                    ) : (
+                      <p class="muted">This preview link has expired.</p>
+                    )}
+                    <form class="stack" method="post" action={prospectAction}>
+                      <input type="hidden" name="id" value={selected.id} />
+                      <input type="hidden" name="revision" value={selected.revision} />
+                      <button class="button outline" name="action" value="extend">Extend link for 30 days</button>
+                      <button class="button outline" name="action" value="revoke">Revoke share link</button>
+                      <p class="muted">
+                        Extension requires current evidence. To update an unpaid dossier, revoke this link and approve a new one.
+                        Revoking a preview does not cancel or erase an order.
+                      </p>
+                    </form>
+                  </>
+                )}
+                {selected?.share_token || selected?.paid_at ? (
+                  <>
                     {selected.paid_at ? (
                       <div class="notice stack">
                         <strong>
@@ -265,8 +310,7 @@ function stage(lead) {
                           </form>
                         )}
                       </div>
-                    ) : (
-                      <>
+                    ) : previewPath && (
                         <details>
                           <summary>Pitch draft</summary>
                           <p class="muted">
@@ -278,15 +322,6 @@ function stage(lead) {
                             readonly
                           >{`Hi ${name} team,\n\nI saw this detail about your business: “${pitchFact.value}”. I used it to shape a private one-page concept for you. Here’s the preview: ${previewURL}\n\nIf it feels right, the launch package is ${displayPrice(selected.data.currency, selected.offer.amount)} one time. You can also reply with edits.\n\n[Sender name and mailing address]\n[Opt-out instructions]`}</textarea>
                         </details>
-                        {!selected.attempt && (
-                          <form method="post" action={prospectAction}>
-                            <input type="hidden" name="id" value={selected.id} />
-                            <button class="button outline" name="action" value="revoke">
-                              Revoke share link
-                            </button>
-                          </form>
-                        )}
-                      </>
                     )}
                   </>
                 ) : (

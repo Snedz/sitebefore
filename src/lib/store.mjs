@@ -19,16 +19,30 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS order_deliveries (
     prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS order_receipt_links (
+    token TEXT PRIMARY KEY, prospect_id TEXT NOT NULL REFERENCES orders(prospect_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS payment_reconciliation (
+    checkout_id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL, attempt TEXT NOT NULL,
+    amount INTEGER NOT NULL, currency TEXT NOT NULL, offer_version TEXT NOT NULL,
+    reason TEXT NOT NULL, received_at TEXT NOT NULL
+  )`,
 ];
 
 const now = () => new Date().toISOString();
+const previewLifetime = 30 * 86400000;
+const expiryCutoff = () => new Date(Date.now() - previewLifetime).toISOString();
+const validToken = token => /^[A-Za-z0-9_-]{32}$/.test(token);
+export const previewExpiresAt = lead => lead.approved_at &&
+  new Date(Date.parse(lead.approved_at) + previewLifetime).toISOString();
+export const previewIsActive = lead => Boolean(lead?.share_token && lead.approved_at > expiryCutoff());
 const select = `SELECT p.*, o.paid_at, o.delivered_at, o.provider, o.checkout_id AS receipt_id, d.site_url
   FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
   LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id`;
 const pageSize = 100;
 
 function matchesCheckout(lead, event) {
-  return lead?.share_token && lead.attempt === event.attempt &&
+  return lead?.attempt === event.attempt &&
     lead.offer.amount === event.amount && lead.offer.version === event.version &&
     lead.data.currency === event.currency;
 }
@@ -51,9 +65,16 @@ export async function createStore(config, offer = currentOffer) {
   const hydrate = row => {
     if (!row) return row;
     const { offer: approvedOffer, ...data } = JSON.parse(String(row.payload));
-    return { ...row, data, offer: row.share_token ? approvedOffer ?? launchOffer : offer };
+    return { ...row, data, offer: row.share_token || row.paid_at ? approvedOffer ?? launchOffer : offer };
   };
   const find = async id => hydrate((await execute(select + ' WHERE p.id = ?', [id])).rows[0]);
+  const checkoutLead = async (id, token) => {
+    const lead = await find(id);
+    if (lead?.share_token !== token || !previewIsActive(lead) || !lead.attempt) {
+      throw new WorkflowError('Preview is unavailable.', 404);
+    }
+    return lead;
+  };
   const resetExpiredSession = async (id, attempt, sessionId) => {
     await execute(`UPDATE prospects SET attempt = ?, checkout_id = NULL WHERE id = ? AND attempt = ? AND checkout_id = ?
       AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?)`, [randomUUID(), id, attempt, sessionId, id]);
@@ -62,7 +83,7 @@ export async function createStore(config, offer = currentOffer) {
   return {
     close: () => db.close(),
     async list(page = 1) {
-      const { rows } = await execute(`SELECT p.id, p.share_token, o.paid_at, o.delivered_at,
+      const { rows } = await execute(`SELECT p.id, p.share_token, p.approved_at, o.paid_at, o.delivered_at,
         (SELECT json_extract(f.value, '$.value') FROM json_each(p.payload, '$.facts') f
           WHERE json_extract(f.value, '$.field') = 'name' LIMIT 1) AS name
         FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id
@@ -72,19 +93,27 @@ export async function createStore(config, offer = currentOffer) {
     },
     async counts() {
       const { rows } = await execute(`SELECT
-        count(CASE WHEN p.share_token IS NULL THEN 1 END) AS drafts,
-        count(CASE WHEN p.share_token IS NOT NULL AND o.paid_at IS NULL THEN 1 END) AS shared,
+        count(CASE WHEN p.share_token IS NULL AND o.paid_at IS NULL THEN 1 END) AS drafts,
+        count(CASE WHEN p.share_token IS NOT NULL AND o.paid_at IS NULL AND p.approved_at > ? THEN 1 END) AS shared,
         count(CASE WHEN o.paid_at IS NOT NULL AND o.delivered_at IS NULL THEN 1 END) AS queued,
         count(o.delivered_at) AS delivered
-        FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id`);
+        FROM prospects p LEFT JOIN orders o ON p.id = o.prospect_id`, [expiryCutoff()]);
       return rows[0];
     },
     async hasBusiness(key) {
       return (await execute('SELECT 1 FROM prospects WHERE business_key = ?', [key])).rows.length > 0;
     },
     find,
-    publicLead: async token => /^[A-Za-z0-9_-]{32}$/.test(token) &&
-      hydrate((await execute(select + ' WHERE p.share_token = ?', [token])).rows[0]),
+    publicLead: async token => validToken(token) &&
+      hydrate((await execute(select + ' WHERE p.share_token = ? AND p.approved_at > ?', [token, expiryCutoff()])).rows[0]),
+    async publicReceipt(token) {
+      if (!validToken(token)) return;
+      const { rows } = await execute(`SELECT o.checkout_id AS receipt_id, o.provider, o.delivered_at, d.site_url
+        FROM orders o LEFT JOIN order_deliveries d ON o.prospect_id = d.prospect_id
+        WHERE o.prospect_id = (SELECT id FROM prospects WHERE share_token = ?)
+           OR o.prospect_id = (SELECT prospect_id FROM order_receipt_links WHERE token = ?)`, [token, token]);
+      return rows[0];
+    },
     async save(input, id, revision) {
       const data = normalizeProspect(input);
       const payload = JSON.stringify(data);
@@ -92,7 +121,8 @@ export async function createStore(config, offer = currentOffer) {
       const leadId = id || randomUUID();
       const saved = id
         ? await execute(`UPDATE OR IGNORE prospects SET business_key = ?, payload = ?, revision = revision + 1
-          WHERE id = ? AND revision = ? AND share_token IS NULL`, [key, payload, id, revision])
+          WHERE id = ? AND revision = ? AND share_token IS NULL
+            AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?)`, [key, payload, id, revision, id])
         : await execute('INSERT OR IGNORE INTO prospects (id, business_key, payload, created_at) VALUES (?, ?, ?, ?)',
           [leadId, key, payload, now()]);
       if (!saved.rowsAffected) throw new WorkflowError('A duplicate, approved or changed prospect prevented this save. Reload before editing.', 409);
@@ -102,6 +132,7 @@ export async function createStore(config, offer = currentOffer) {
       const lead = await find(id);
       if (!lead) throw new WorkflowError('Prospect not found.', 404);
       if (lead.share_token) return;
+      if (lead.paid_at) throw new WorkflowError('This order already has a receipt.', 409);
       if (reviewedOfferVersion !== offer.version) {
         throw new WorkflowError('The offer changed. Reload and review the new terms before approving.', 409);
       }
@@ -112,18 +143,40 @@ export async function createStore(config, offer = currentOffer) {
         [randomBytes(24).toString('base64url'), now(), JSON.stringify(offer), id, revision]);
       if (!saved.rowsAffected) throw new WorkflowError('This prospect changed. Reload and review the evidence again.', 409);
     },
-    async revoke(id) {
-      const saved = await execute(`UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
-          payload = json_remove(payload, '$.offer')
-        WHERE id = ? AND share_token IS NOT NULL AND attempt IS NULL`, [id]);
-      if (!saved.rowsAffected) throw new WorkflowError('A preview with a checkout attempt cannot be revoked here.', 409);
-    },
-    async reserveAttempt(id, token) {
-      await execute(`UPDATE prospects SET attempt = ? WHERE id = ? AND share_token = ? AND attempt IS NULL`,
-        [randomUUID(), id, token]);
+    async extend(id, revision) {
       const lead = await find(id);
-      if (lead?.share_token !== token || !lead.attempt) throw new WorkflowError('Preview is unavailable.', 409);
-      return lead;
+      if (!lead?.share_token) throw new WorkflowError('Release a preview before extending it.', 409);
+      checkFreshness(lead.data.facts);
+      const saved = await execute(`UPDATE prospects SET approved_at = ?, revision = revision + 1
+        WHERE id = ? AND share_token = ? AND revision = ?`, [now(), id, lead.share_token, revision]);
+      if (!saved.rowsAffected) throw new WorkflowError('This preview changed. Reload before extending it.', 409);
+    },
+    async revoke(id) {
+      const [, saved] = await db.batch([
+        {
+          sql: `INSERT INTO order_receipt_links (token, prospect_id)
+            SELECT p.share_token, p.id FROM prospects p JOIN orders o ON o.prospect_id = p.id
+            WHERE p.id = ? AND p.share_token IS NOT NULL`,
+          args: [id],
+        },
+        {
+          sql: `UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
+            (payload, attempt, checkout_id) = (
+              SELECT CASE WHEN paid THEN payload ELSE json_remove(payload, '$.offer') END,
+                     CASE WHEN paid THEN attempt END, CASE WHEN paid THEN checkout_id END
+              FROM (SELECT EXISTS (SELECT 1 FROM orders WHERE prospect_id = ?) AS paid)
+            )
+            WHERE id = ? AND share_token IS NOT NULL`,
+          args: [id, id],
+        },
+      ], 'write');
+      if (!saved.rowsAffected) throw new WorkflowError('There is no preview link to revoke.', 409);
+    },
+    checkoutLead,
+    async reserveAttempt(id, token) {
+      await execute(`UPDATE prospects SET attempt = ? WHERE id = ? AND share_token = ? AND attempt IS NULL AND approved_at > ?`,
+        [randomUUID(), id, token, expiryCutoff()]);
+      return checkoutLead(id, token);
     },
     async recordSession(id, attempt, sessionId) {
       const saved = await execute(`UPDATE prospects SET checkout_id = ?
@@ -140,16 +193,37 @@ export async function createStore(config, offer = currentOffer) {
       const { id, attempt, sessionId, amount, currency, provider } = event;
       // The offer is immutable once an attempt starts. The insert still checks
       // the attempt in case Stripe expired it while the webhook was in flight.
-      if (!matchesCheckout(await find(id), event)) return false;
+      const lead = await find(id);
+      if (!matchesCheckout(lead, event)) return false;
+      if (lead.paid_at) return lead.receipt_id === sessionId && lead.provider === provider;
       const inserted = await execute(`INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
         SELECT id, ?, ?, ?, ?, ? FROM prospects
         WHERE id = ? AND attempt = ? AND share_token IS NOT NULL
           AND json_extract(payload, '$.currency') = ? AND (checkout_id = ? OR checkout_id IS NULL)
-        ON CONFLICT(prospect_id) DO NOTHING`,
+        ON CONFLICT DO NOTHING`,
         [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId]);
       if (inserted.rowsAffected) return true;
       const paid = await find(id);
       return paid?.receipt_id === sessionId && paid.provider === provider && paid.attempt === attempt;
+    },
+    async recordPaymentMismatch(event) {
+      const lead = await find(event.id);
+      const reason = !lead ? 'Prospect not found'
+        : !lead.share_token && !lead.paid_at ? 'Preview revoked'
+        : lead.attempt !== event.attempt ? 'Checkout attempt is no longer current'
+        : !matchesCheckout(lead, event) ? 'Amount, currency or offer does not match'
+        : 'Checkout session does not match the order';
+      await execute(`INSERT INTO payment_reconciliation
+        (checkout_id, prospect_id, attempt, amount, currency, offer_version, reason, received_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(checkout_id) DO NOTHING`,
+        [event.sessionId, event.id, event.attempt, event.amount, event.currency, event.version, reason, now()]);
+    },
+    async paymentsToReconcile() {
+      const { rows } = await execute(`SELECT r.*, p.id AS known_prospect
+        FROM payment_reconciliation r LEFT JOIN prospects p ON p.id = r.prospect_id
+        ORDER BY r.received_at DESC, r.checkout_id`);
+      return rows;
     },
     async markDelivered(id, siteUrl) {
       const url = deliveryUrl(siteUrl);
