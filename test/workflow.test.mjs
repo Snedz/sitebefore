@@ -78,6 +78,11 @@ test('an explicit location and city must agree', () => {
   input.facts.location = { ...input.facts.city };
   delete input.facts.address;
   assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  for (const location of ['MESQUITE  TX', 'Dallas County, Mesquite, TX']) {
+    input.facts.location.value = input.facts.location.excerpt = location;
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  }
+  input.facts.location.value = input.facts.location.excerpt = 'Mesquite TX';
   input.facts.city = { ...input.facts.city, value: 'Dallas', excerpt: 'Dallas' };
   assert.throws(() => parseDossierExport(JSON.stringify(input)), /location, city: contradictory values for location/);
 });

@@ -126,7 +126,8 @@ export function parseDossierExport(raw, now = Date.now()) {
     if (row.field !== 'location') continue;
     const parts = row.value.split(',').map(part => normalizeEvidenceText(part.trim()));
     for (const city of cities) {
-      if (!parts.includes(normalizeEvidenceText(city.row.value))) {
+      const expected = normalizeEvidenceText(city.row.value);
+      if (!parts.includes(expected) && !parts[0].startsWith(expected + ' ')) {
         issues.push(`${label}, ${city.label}: contradictory values for location.`);
       }
     }
