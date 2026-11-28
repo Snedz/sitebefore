@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { currentOffer, displayPrice } from '../src/lib/offer.mjs';
 
 test('a fictional buyer can pay for an approved preview and receive the launch link', { timeout: 30_000 }, async t => {
@@ -75,7 +76,22 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   const seeded = await agency({ action: 'seed' });
   const id = new URL(seeded.location, origin).searchParams.get('lead');
   assert.ok(id);
-  await agency({ action: 'release', id, revision: '1', verified: 'yes', offer_version: currentOffer.version });
+  const draftPath = '/agency/draft/' + id + '/';
+  const originalDraft = await request(draftPath, 200, { cookie });
+  assert.doesNotMatch(originalDraft.html, /href="tel:/);
+  const dossier = makeDemoProspect();
+  const phone = '(214) 555-0142';
+  const phoneLink = /href="tel:\+12145550142"/;
+  const privateNote = 'Fixture phone evidence for operator review.';
+  dossier.facts.push({
+    field: 'phone', value: phone, excerpt: phone + ' ' + privateNote,
+    source: dossier.businessUrl, checked: dossier.facts[0].checked,
+  });
+  await agency({ action: 'save', id, revision: '1', prospect: JSON.stringify(dossier) });
+  const draft = await request(draftPath, 200, { cookie });
+  assert.match(draft.html, phoneLink);
+  assert.ok(!draft.html.includes(privateNote));
+  await agency({ action: 'release', id, revision: '2', verified: 'yes', offer_version: currentOffer.version });
   const approved = await request(seeded.location, 200, { cookie });
   const previewPath = approved.html.match(/\/p\/[A-Za-z0-9_-]{32}\//)?.[0];
   assert.ok(previewPath, 'Agency OS shows the approved buyer link');
@@ -85,6 +101,9 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.ok(preview.html.includes(displayPrice('USD')));
   assert.ok(preview.html.includes(currentOffer.scope[0]));
   assert.match(preview.html, /Start test checkout/);
+  assert.match(preview.html, phoneLink);
+  assert.match(preview.html, /Call the business/);
+  assert.ok(!preview.html.includes(privateNote));
 
   const checkout = form => request('/api/checkout', 303, { form: { token, ...form } });
   const started = await checkout();

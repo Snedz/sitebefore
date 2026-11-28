@@ -1,4 +1,4 @@
-const singleFields = ['name', 'location', 'trade', 'headline', 'intro', 'story'];
+const singleFields = ['name', 'location', 'trade', 'headline', 'intro', 'story', 'phone'];
 const required = ['name', 'location', 'trade', 'intro', 'service'];
 
 export class WorkflowError extends Error {
@@ -17,6 +17,14 @@ function clean(value, max, label) {
 
 const normalizeEvidenceText = text => text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
 
+export function businessPhoneLink(value) {
+  if (typeof value !== 'string' ||
+      !/^(?:\+?1[ .-]?)?(?:\([2-9]\d{2}\)|[2-9]\d{2})[ .-]?[2-9]\d{2}[ .-]?\d{4}$/.test(value)) {
+    return null;
+  }
+  return 'tel:+1' + value.replace(/\D/g, '').slice(-10);
+}
+
 export function normalizeProspect(input) {
   if (!input || typeof input !== 'object' || !['USD', 'CAD'].includes(input.currency)) {
     throw new WorkflowError('Set the prospect currency to USD or CAD.');
@@ -27,12 +35,15 @@ export function normalizeProspect(input) {
   const seen = new Set();
   const facts = input.facts.map((row) => {
     if (!row || ![...singleFields, 'service'].includes(row.field)) {
-      throw new WorkflowError('Fact field must be name, location, trade, headline, intro, story or service.');
+      throw new WorkflowError('Fact field must be name, location, trade, headline, intro, story, phone or service.');
     }
     const { field } = row;
     if (field !== 'service' && seen.has(field)) throw new WorkflowError(`Duplicate ${field} fact.`);
     seen.add(field);
     const value = clean(row.value, field === 'story' || field === 'intro' ? 500 : 110, field);
+    if (field === 'phone' && !businessPhoneLink(value)) {
+      throw new WorkflowError('Use a 10-digit US or Canadian business phone number with optional +1.');
+    }
     const excerpt = clean(row.excerpt, 1500, 'Evidence excerpt');
     const evidenceText = normalizeEvidenceText(excerpt);
     if (!evidenceText.includes(normalizeEvidenceText(value))) {

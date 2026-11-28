@@ -24,6 +24,8 @@ For a real dossier, paste JSON containing `currency` (`USD` or `CAD`), `business
 
 A `service` fact can also include a `description` of up to 250 characters explaining what that service covers or how to get started. The same `excerpt` must contain the service name and description. The description appears in the draft and, once approved, in the buyer preview.
 
+An optional `phone` fact sets a call link in the draft and approved preview. Use a public 10-digit US or Canadian business number, with optional `+1`, and quote that number in the source excerpt. Confirm the number is the intended contact destination before approval. Without a phone fact, the preview uses the existing business URL.
+
 Approving a preview also saves the quoted price and package scope. Existing buyer links keep those terms through checkout and delivery. If the offer changes while reviewing an open draft, reload the draft before approving it.
 
 `npm test` includes a local HTTP rehearsal with the fictional prospect and a temporary database. It checks preview approval, checkout cancellation and retry, and the buyer receipt after delivery.

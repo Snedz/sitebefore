@@ -2,9 +2,13 @@
 import '@fontsource/barlow-condensed/latin-700.css';
 import Base from '../layouts/Base.astro';
 import Brand from './Brand.astro';
+import { businessPhoneLink } from '../lib/prospect.mjs';
 const { profile, sample = false, contactUrl } = Astro.props;
 const concerns = sample ? profile.concerns : null;
 const shopName = sample ? 'Juniper' : profile.name;
+const phoneLink = businessPhoneLink(profile.phone);
+const contactHref = phoneLink ?? contactUrl;
+const contactLabel = phoneLink ? 'Call the business' : 'Contact the business';
 ---
 
 <Base title={`${profile.name} · SiteBefore Preview`} privatePage>
@@ -25,7 +29,7 @@ const shopName = sample ? 'Juniper' : profile.name;
           <nav aria-label="Shop navigation">
             <a href="#services">Services</a>
             {profile.story && <a href="#workshop">About</a>}
-            {contactUrl && <a href={contactUrl}>Contact</a>}
+            {contactHref && <a href={contactHref}>{phoneLink ? 'Call' : 'Contact'}</a>}
           </nav>
         </div>
       </header>
@@ -34,9 +38,9 @@ const shopName = sample ? 'Juniper' : profile.name;
           <p class="label">{profile.trade} <span aria-hidden="true">/</span> {profile.location}</p>
           <h1>{profile.headline ?? profile.name}</h1>
           <p class="description">{profile.intro}</p>
-          <a class="shop-button" href={contactUrl ?? '#services'}>
-            {contactUrl ? 'Contact the business' : 'Find your service'}
-            <span aria-hidden="true">{contactUrl ? '↗' : '↓'}</span>
+          <a class="shop-button" href={contactHref ?? '#services'}>
+            {contactHref ? contactLabel : 'Find your service'}
+            <span aria-hidden="true">{contactHref ? '↗' : '↓'}</span>
           </a>
         </div>
         {profile.hero && (
@@ -87,7 +91,7 @@ const shopName = sample ? 'Juniper' : profile.name;
       <div class="shop-end">
         <div class="shop-wrap end-inner">
           <p>{profile.name}<small>{profile.location}</small></p>
-          {contactUrl ? <a href={contactUrl}>Contact the business <span aria-hidden="true">↗</span></a> : <a href="#shop">Back to top <span aria-hidden="true">↑</span></a>}
+          {contactHref ? <a href={contactHref}>{contactLabel} <span aria-hidden="true">↗</span></a> : <a href="#shop">Back to top <span aria-hidden="true">↑</span></a>}
         </div>
       </div>
     </div>

@@ -31,6 +31,13 @@ test('dossiers reject unsupported claims and keep raw evidence out of preview da
   input.facts[0] = { ...makeDemoProspect().facts[0], checked: '2026-02-30' };
   assert.throws(() => normalizeProspect(input), /YYYY-MM-DD/);
   assert.throws(() => checkFreshness([{ field: 'location', checked: '2026-01-01' }], Date.parse('2026-02-02')), /Refresh/);
+
+  const withPhone = makeDemoProspect();
+  const phoneFact = { ...withPhone.facts[0], field: 'phone', value: '(214) 555-0142' };
+  withPhone.facts.push(phoneFact);
+  assert.throws(() => normalizeProspect(withPhone), /evidence excerpt/);
+  phoneFact.excerpt = phoneFact.value = '214-555-0142;ext=99';
+  assert.throws(() => normalizeProspect(withPhone), /10-digit/);
 });
 
 test('service descriptions must be sourced before they can reach an approved preview', async t => {
