@@ -42,7 +42,8 @@ export async function POST({ request, cookies, url }) {
         if (form.get('verified') !== 'yes') throw new WorkflowError('Confirm you checked the facts and design before release.');
         await store.release(id, revision, form.get('offer_version'));
         break;
-      case 'revoke': await store.revoke(id); break;
+      case 'extend': await store.extend(id, revision); break;
+      case 'revoke': await store.revoke(id, revision); break;
       case 'delivered': await store.markDelivered(id, form.get('site_url')); break;
       default: throw new WorkflowError('Unknown action.');
     }

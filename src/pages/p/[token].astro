@@ -1,5 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
+import OrderReceipt from '../../components/OrderReceipt.astro';
 import StoryPreview from '../../components/StoryPreview.astro';
 import PricePanel from '../../components/PricePanel.astro';
 import { demoBusinessUrl } from '../../data/demo-prospect.mjs';
@@ -10,15 +11,22 @@ export const prerender = false;
 
 for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
 const token = Astro.params.token ?? '';
+const receiptOnly = Astro.url.searchParams.get('receipt') === '1';
+const receiptPath = '/p/' + token + '/?receipt=1';
 let lead;
+let receipt;
 if (/^[A-Za-z0-9_-]{32}$/.test(token)) {
   try {
-    lead = await (await getStore()).publicLead(token);
+    const store = await getStore();
+    if (!receiptOnly) lead = await store.publicLead(token);
+    if (receiptOnly || !lead) receipt = await store.publicReceipt(token);
   } catch (err) {
     Astro.response.status = err.status === 503 ? 503 : 500;
   }
 }
-if (!lead && Astro.response.status === 200) Astro.response.status = 404;
+if (!lead && !(receiptOnly && receipt) && Astro.response.status === 200) {
+  Astro.response.status = receipt ? 410 : 404;
+}
 let mode = checkoutMode();
 if (mode === 'stripe-test') {
   const origin = checkoutOrigin();
@@ -32,24 +40,18 @@ const status = Astro.url.searchParams.get('checkout');
 ---
 
 {
-  lead ? (
+  receiptOnly && receipt ? (
+    <Base title="Order receipt · SiteBefore" privatePage>
+      <main class="wrap missing stack">
+        <h1>Order receipt</h1>
+        <OrderReceipt lead={receipt} />
+      </main>
+    </Base>
+  ) : lead ? (
     <StoryPreview profile={prospectSummary(lead)} contactUrl={lead.data.businessUrl === demoBusinessUrl ? undefined : lead.data.businessUrl}>
       <PricePanel currency={lead.data.currency} offer={lead.offer}>
         {lead.paid_at ? (
-          <div class="notice stack" role="status">
-            <strong>
-              {lead.provider === 'demo' ? 'Simulated payment received' : 'Test payment received'}
-            </strong>
-            <p>
-              {lead.delivered_at
-                ? 'SiteBefore marked this order delivered.'
-                : 'Your order is in the launch queue. Keep this link for updates.'}
-            </p>
-            {lead.site_url && <a href={lead.site_url} rel="noreferrer">Open your published site</a>}
-            <small>
-              Order reference <code>{lead.receipt_id}</code>
-            </small>
-          </div>
+          <OrderReceipt lead={lead} />
         ) : (
           <div class="stack">
             {status === 'returned' &&
@@ -103,10 +105,11 @@ const status = Astro.url.searchParams.get('checkout');
         <h1>Preview unavailable</h1>
         <>
           <p>
-            {Astro.response.status >= 500
+            {receipt ? 'This preview is no longer available. Your order is unchanged.' : Astro.response.status >= 500
               ? 'Try again in a moment.'
               : 'Check the full link that came with your invitation.'}
           </p>
+          {receipt && <p><a href={receiptPath}>View your order receipt</a></p>}
           <p>
             <a href="/">Return to SiteBefore</a>
           </p>

@@ -24,11 +24,15 @@ export function checkoutOrigin(value = process.env.SITEBEFORE_ORIGIN, dev = impo
 
 export async function startStripeCheckout(store, lead, path, origin) {
   const stripe = stripeClient();
+  const token = lead.share_token;
   if (lead.checkout_id) {
     const existing = await stripe.checkout.sessions.retrieve(lead.checkout_id);
+    lead = await store.checkoutLead(lead.id, token);
+    if (lead.paid_at || lead.checkout_id !== existing.id) return path + '?checkout=returned#offer';
     if (existing.status === 'open' && existing.url) return existing.url;
     if (existing.status !== 'expired') return path + '?checkout=returned#offer';
-    lead = await store.resetExpiredSession(lead.id, lead.attempt, existing.id);
+    await store.resetExpiredSession(lead.id, lead.attempt, existing.id);
+    lead = await store.checkoutLead(lead.id, token);
     if (lead.paid_at || lead.checkout_id) return path + '?checkout=returned#offer';
   }
   const session = await stripe.checkout.sessions.create({
@@ -49,6 +53,7 @@ export async function startStripeCheckout(store, lead, path, origin) {
   }, { idempotencyKey: 'sitebefore:' + lead.attempt });
   if (!session.url || session.livemode) throw new WorkflowError('Test checkout is unavailable.', 502);
   await store.recordSession(lead.id, lead.attempt, session.id);
+  await store.checkoutLead(lead.id, token);
   return session.url;
 }
 

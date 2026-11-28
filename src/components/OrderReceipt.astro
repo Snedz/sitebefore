@@ -1,0 +1,24 @@
+---
+const { lead } = Astro.props;
+---
+
+<div class="notice stack" role="status">
+  <strong>{lead.provider === 'demo' ? 'Simulated payment received' : 'Test payment received'}</strong>
+  <p>
+    {lead.delivered_at
+      ? 'SiteBefore marked this order delivered.'
+      : 'Your order is in the launch queue. Keep this link for updates.'}
+  </p>
+  {lead.site_url && <a href={lead.site_url} rel="noreferrer">Open your published site</a>}
+  <small>Order reference <code>{lead.receipt_id}</code></small>
+</div>
+
+<style>
+  .notice {
+    padding: 12px;
+    border-radius: 6px;
+    background: #edf2e9;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+</style>

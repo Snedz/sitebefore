@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import Stripe from 'stripe';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { currentOffer, displayPrice } from '../src/lib/offer.mjs';
 
@@ -128,4 +129,52 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.match(delivered.html, /marked this order delivered/);
   assert.ok(delivered.html.includes(`href="${site}"`));
   assert.equal(delivered.html.match(receiptReference)?.[1], reference);
+
+  const paidWorkspace = await request(seeded.location, 200, { cookie });
+  assert.match(paidWorkspace.html, /Revoke share link/);
+  assert.match(paidWorkspace.html, /No unmatched Stripe payments/);
+  await request('/api/agency', 409, { cookie, form: { action: 'revoke', id } });
+  await agency({ action: 'revoke', id, revision: '2' });
+  const revoked = await request(previewPath, 410);
+  assert.doesNotMatch(revoked.html, phoneLink);
+  const receiptPath = revoked.html.match(/href="([^"]+\?receipt=1)"/)?.[1];
+  assert.ok(receiptPath);
+  const receiptOnly = await request(receiptPath, 200);
+  assert.match(receiptOnly.headers.get('x-robots-tag') ?? '', /noindex/);
+  assert.match(receiptOnly.headers.get('cache-control') ?? '', /no-store/);
+  assert.equal(receiptOnly.html.match(receiptReference)?.[1], reference);
+  assert.ok(receiptOnly.html.includes(`href="${site}"`));
+  assert.doesNotMatch(receiptOnly.html, phoneLink);
+  assert.doesNotMatch(receiptOnly.html, /\/api\/checkout/);
+  await request('/api/checkout', 404, { form: { token } });
+  const revokedWorkspace = await request(seeded.location, 200, { cookie });
+  assert.match(revokedWorkspace.html, /Order marked delivered/);
+  assert.ok(revokedWorkspace.html.includes(reference));
+
+  process.env.SITEBEFORE_DEMO_CHECKOUT = '0';
+  process.env.STRIPE_SECRET_KEY = 'sk_test_fixture';
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_fixture';
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const sessionId = 'cs_test_revoked_preview';
+  const payload = JSON.stringify({
+    type: 'checkout.session.completed', livemode: false,
+    data: { object: {
+      id: sessionId, livemode: false, mode: 'payment', currency: 'usd',
+      amount_total: currentOffer.amount, payment_status: 'paid',
+      metadata: { prospect_id: id, attempt: 'stale-attempt', offer_version: currentOffer.version },
+    } },
+  });
+  const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
+  const webhook = headers => fetch(origin + '/api/stripe-webhook', {
+    method: 'POST', body: payload, headers, signal: AbortSignal.timeout(5_000),
+  });
+  assert.equal((await webhook({})).status, 400);
+  assert.match((await request(seeded.location, 200, { cookie })).html, /No unmatched Stripe payments/);
+  assert.equal((await webhook({ 'stripe-signature': signature })).status, 204);
+  assert.equal((await webhook({ 'stripe-signature': signature })).status, 204);
+  const flagged = await request(seeded.location, 200, { cookie });
+  assert.match(flagged.html, /Payments needing reconciliation/);
+  assert.match(flagged.html, /Checkout attempt is no longer current/);
+  assert.equal(flagged.html.split(sessionId).length, 2);
+  assert.doesNotMatch((await request(seeded.location, 200)).html, /Payments needing reconciliation/);
 });
