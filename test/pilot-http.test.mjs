@@ -146,6 +146,7 @@ test('a fictional buyer can pay for an approved preview and receive the launch l
   assert.equal(delivered.html.match(receiptReference)?.[1], reference);
   assert.doesNotMatch(delivered.html, /Recent operator activity|Approved by reviewer/);
 
+  await review({ action: 'delivered', id, site_url: site });
   await request('/api/agency', 409, { cookie, form: { action: 'revoke', id } });
   await review({ action: 'sign-out' });
   await request(draftPath, 401, { cookie: namedCookie });

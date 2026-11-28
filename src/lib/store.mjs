@@ -210,13 +210,15 @@ export async function createStore(config, offer = currentOffer) {
         },
         {
           sql: `UPDATE orders SET delivered_at = COALESCE(delivered_at, ?) WHERE prospect_id = ?
+            AND (delivered_at IS NULL OR changes() > 0)
             AND EXISTS (SELECT 1 FROM order_deliveries WHERE prospect_id = orders.prospect_id AND site_url = ?)`,
           args: [now(), id, url],
         },
         operator ? auditChange(operator, 'delivered', id) : { sql: 'SELECT 1', args: [] },
-        { sql: 'SELECT 1 FROM orders WHERE prospect_id = ?', args: [id] },
+        { sql: `SELECT d.site_url FROM orders o LEFT JOIN order_deliveries d ON d.prospect_id = o.prospect_id
+          WHERE o.prospect_id = ?`, args: [id] },
       ], 'write');
-      if (saved.rowsAffected) return;
+      if (saved.rowsAffected || order.rows[0]?.site_url === url) return;
       if (!order.rows.length) throw new WorkflowError('An order must be paid before delivery.', 409);
       throw new WorkflowError('A different site URL has already been recorded for this order.', 409);
     },
