@@ -6,6 +6,7 @@ import test from 'node:test';
 import { createClient } from '@libsql/client';
 import Stripe from 'stripe';
 import { createStore } from '../src/lib/store.mjs';
+import { parseDossierExport } from '../src/lib/dossier-import.mjs';
 import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
@@ -13,6 +14,85 @@ import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verif
 import { readForm } from '../src/lib/http.mjs';
 
 const { version: offerVersion, amount: price } = currentOffer;
+
+function exportFixture(retrieved = new Date().toISOString().slice(0, 10)) {
+  const source = 'https://example.com/maps/place/gm-auto-care';
+  const fact = value => ({ value, source, retrieved, excerpt: value });
+  return {
+    slug: 'gm-auto-care-mesquite', niche: 'auto_repair', currency: 'USD',
+    facts: {
+      name: fact('GM Auto Care'), city: fact('Mesquite'),
+      address: fact('2301 N Galloway Ave, Mesquite, TX 75150'), phone: fact('(469) 687-5439'),
+      maps_url: fact(source), category: fact('Auto repair shop'), website: { value: '', source, retrieved },
+      intro: fact('Fixture introduction for workflow testing.'), service: [fact('Fixture service')],
+    },
+  };
+}
+
+test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
+  const clock = Date.parse('2026-11-28T12:00:00Z');
+  const retrieved = '2026-11-01T15:45:00-05:00';
+  const input = exportFixture(retrieved);
+  const raw = JSON.stringify(input);
+  const { dossier, sourceHash, evidence } = parseDossierExport(raw, clock);
+  assert.match(sourceHash, /^[a-f0-9]{64}$/);
+  assert.equal(dossier.businessUrl, input.facts.maps_url.value);
+  assert.deepEqual(dossier.facts.find(fact => fact.field === 'location'), {
+    ...input.facts.address, field: 'location', checked: '2026-11-01',
+  });
+  assert.ok(evidence.some(fact => fact.field === 'city'));
+  assert.throws(() => parseDossierExport('', clock), /valid JSON/);
+  assert.throws(() => parseDossierExport('{"facts":{}}', clock), /intro: required sourced fact is missing/);
+  assert.throws(() => parseDossierExport(raw.replace('"city":', '"name":{},"city":'), clock), /"name": duplicate JSON key/);
+  input.facts.address = [input.facts.address, { ...input.facts.address,
+    value: '3115 N. Central Expressway, Suite 120, Dallas', excerpt: '3115 N. Central Expressway, Suite 120, Dallas' }];
+  input.facts.phone = [input.facts.phone, { ...input.facts.phone,
+    value: '(214) 555-0144', excerpt: 'Factory fixture did not substantiate the number.' }];
+  input.facts.name.retrieved = '2026-10-19';
+  input.facts.city.source = 'http://example.com/listing';
+  delete input.facts.category.source;
+  delete input.facts.intro.excerpt;
+  assert.throws(() => parseDossierExport(JSON.stringify(input), clock), error => {
+    for (const message of [
+      'Refresh the name evidence', 'address[1], address[2]: contradictory values for location',
+      'phone[1], phone[2]: contradictory values for phone', 'phone[2]: the fact value does not appear in the excerpt',
+      'city: missing or invalid HTTPS source URL', 'category: missing or invalid HTTPS source URL',
+      'intro: provide a captured excerpt',
+    ]) assert.ok(error.message.includes(message), message);
+    return error.status === 400;
+  });
+});
+
+test('import deduplicates drafts by hash and business, and never alters a released prospect', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  const input = exportFixture();
+  const raw = JSON.stringify(input);
+  const id = await db.importDossier(raw);
+  const firstImport = await db.latestDossierImport(id);
+  assert.equal(firstImport.source_hash, parseDossierExport(raw).sourceHash);
+  assert.equal(await db.importDossier(raw), id);
+  assert.equal((await db.find(id)).revision, 1);
+  assert.deepEqual(await db.latestDossierImport(id), firstImport);
+  const outdated = exportFixture('2026-10-19');
+  await assert.rejects(db.importDossier(JSON.stringify(outdated)), /maximum age 30 days/);
+  assert.deepEqual(await db.latestDossierImport(id), firstImport);
+  input.facts.intro.value = input.facts.intro.excerpt = 'Updated fixture introduction.';
+  const revised = JSON.stringify(input);
+  assert.equal(await db.importDossier(revised), id);
+  assert.equal((await db.find(id)).revision, 2);
+  const secondImport = await db.latestDossierImport(id);
+  assert.notEqual(secondImport.id, firstImport.id);
+  assert.equal(await db.importDossier(raw), id);
+  assert.equal((await db.find(id)).data.facts.find(fact => fact.field === 'intro').value, 'Updated fixture introduction.');
+  await db.release(id, 2);
+  const before = await db.find(id);
+  await assert.rejects(db.importDossier(revised), { status: 409 });
+  await assert.rejects(db.importDossier(revised + '\n'), { status: 409 });
+  assert.deepEqual(await db.find(id), before);
+  assert.deepEqual(await db.latestDossierImport(id), secondImport);
+  assert.equal((await db.list()).leads.length, 1);
+});
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');

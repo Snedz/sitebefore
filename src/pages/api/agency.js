@@ -38,6 +38,9 @@ export async function POST({ request, cookies, url }) {
         id = await store.save(input, id, revision);
         break;
       }
+      case 'import-dossier':
+        id = await store.importDossier(form.get('dossier_export') ?? '');
+        break;
       case 'release':
         if (form.get('verified') !== 'yes') throw new WorkflowError('Confirm you checked the facts and design before release.');
         await store.release(id, revision, form.get('offer_version'));

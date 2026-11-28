@@ -15,6 +15,7 @@ const page = agencyPage(Astro.url.searchParams.get('page'));
 const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
   selected,
+  lastImport,
   counts,
   hasNext = false,
   showDemo = false,
@@ -32,6 +33,7 @@ if (operator) {
     ({ leads, hasNext } = list);
     counts = totals;
     selected = lead;
+    lastImport = lead && await store.latestDossierImport(lead.id);
     showDemo = !demoExists;
   } catch {
     unavailable = true;
@@ -174,6 +176,20 @@ function stage(lead) {
               </section>
               <section class="panel stack" id="dossier">
                 <h2>{name ?? 'New prospect'}</h2>
+                {!previewPath && (
+                  <details>
+                    <summary>Import a grounded 67 export</summary>
+                    <form class="stack" method="post" action={prospectAction}>
+                      <label for="dossier-export">67 lead export (JSON)</label>
+                      <p id="dossier-export-help" class="muted">
+                        Paste the lead JSON with currency and a captured excerpt for each fact.
+                        A different valid export for an existing business replaces its unreleased draft.
+                      </p>
+                      <textarea id="dossier-export" name="dossier_export" rows="8" aria-describedby="dossier-export-help" required></textarea>
+                      <button class="button" name="action" value="import-dossier">Import draft</button>
+                    </form>
+                  </details>
+                )}
                 {selected && (
                   <p class="muted">
                     {stage(selected)} · {displayPrice(selected.data.currency, selected.offer.amount)}
@@ -186,6 +202,12 @@ function stage(lead) {
                 {selected && (
                   <details open={!previewPath}>
                     <summary>Review the source evidence</summary>
+                    {lastImport && (
+                      <p class="muted import-provenance">
+                        Latest 67 import <code>{lastImport.id}</code> at <time datetime={lastImport.imported_at}>{lastImport.imported_at}</time>.
+                        <br />Source SHA-256: <code>{lastImport.source_hash}</code>
+                      </p>
+                    )}
                     <div class="facts">
                       {selected.data.facts.map((fact) => (
                         <div class="fact">
@@ -196,7 +218,7 @@ function stage(lead) {
                           <a href={fact.source} rel="noreferrer noopener" target="_blank">
                             Open source ↗
                           </a>{' '}
-                          <small>Checked {fact.checked}</small>
+                          <small>{fact.retrieved ? `Retrieved ${fact.retrieved}` : `Checked ${fact.checked}`}</small>
                         </div>
                       ))}
                     </div>
@@ -428,6 +450,7 @@ function stage(lead) {
     gap: 8px;
     margin-top: 10px;
   }
+  .import-provenance { overflow-wrap: anywhere; }
   .fact {
     background: var(--cream);
     padding: 12px;

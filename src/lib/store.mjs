@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeProspect, checkFreshness, publicProfile, WorkflowError } from './prospect.mjs';
 import { currentOffer, launchOffer } from './offer.mjs';
+import { parseDossierExport } from './dossier-import.mjs';
 
 const schema = [
   `CREATE TABLE IF NOT EXISTS prospects (
@@ -19,6 +20,11 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS order_deliveries (
     prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS dossier_imports (
+    id TEXT PRIMARY KEY, source_hash TEXT NOT NULL UNIQUE,
+    prospect_id TEXT NOT NULL REFERENCES prospects(id), imported_at TEXT NOT NULL, evidence TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS dossier_imports_prospect ON dossier_imports(prospect_id)',
 ];
 
 const now = () => new Date().toISOString();
@@ -97,6 +103,42 @@ export async function createStore(config, offer = currentOffer) {
           [leadId, key, payload, now()]);
       if (!saved.rowsAffected) throw new WorkflowError('A duplicate, approved or changed prospect prevented this save. Reload before editing.', 409);
       return leadId;
+    },
+    async importDossier(raw) {
+      const { dossier, evidence, sourceHash } = parseDossierExport(raw);
+      const { businessKey } = dossier;
+      const importedAt = now();
+      const [, , result] = await db.batch([
+        {
+          sql: `INSERT INTO prospects (id, business_key, payload, created_at)
+            SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dossier_imports WHERE source_hash = ?)
+            ON CONFLICT(business_key) DO UPDATE SET payload = excluded.payload, revision = prospects.revision + 1
+            WHERE prospects.share_token IS NULL AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = prospects.id)`,
+          args: [randomUUID(), businessKey, JSON.stringify(dossier), importedAt, sourceHash],
+        },
+        {
+          sql: `INSERT INTO dossier_imports (id, source_hash, prospect_id, imported_at, evidence)
+            SELECT ?, ?, p.id, ?, ? FROM prospects p WHERE p.business_key = ? AND p.share_token IS NULL
+              AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = p.id)
+            ON CONFLICT(source_hash) DO NOTHING`,
+          args: [randomUUID(), sourceHash, importedAt, JSON.stringify(evidence), businessKey],
+        },
+        {
+          sql: `SELECT p.id, p.share_token, o.paid_at FROM dossier_imports i JOIN prospects p ON i.prospect_id = p.id
+            LEFT JOIN orders o ON p.id = o.prospect_id WHERE i.source_hash = ?`,
+          args: [sourceHash],
+        },
+      ], 'write');
+      const prospect = result.rows[0];
+      if (!prospect || prospect.share_token || prospect.paid_at) {
+        throw new WorkflowError('This business already has a released preview or paid order. Import only updates drafts.', 409);
+      }
+      return prospect.id;
+    },
+    async latestDossierImport(id) {
+      const { rows } = await execute(`SELECT id, source_hash, imported_at FROM dossier_imports
+        WHERE prospect_id = ? ORDER BY rowid DESC LIMIT 1`, [id]);
+      return rows[0];
     },
     async release(id, revision, reviewedOfferVersion = offer.version) {
       const lead = await find(id);
