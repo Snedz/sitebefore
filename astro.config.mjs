@@ -1,6 +1,8 @@
 import { defineConfig } from 'astro/config';
+import node from '@astrojs/node';
+import vercel from '@astrojs/vercel';
 
-// Static output only: a preview is one self-contained page, no server needed.
 export default defineConfig({
   output: 'static',
+  adapter: process.env.VERCEL === '1' ? vercel() : node({ mode: 'standalone' }),
 });

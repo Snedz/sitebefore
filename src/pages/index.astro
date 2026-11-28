@@ -1,6 +1,127 @@
 ---
-import Offer from '../components/Offer.astro';
-import offer from '../data/offer.json';
+import Base from '../layouts/Base.astro';
+import Brand from '../components/Brand.astro';
+import { currentOffer, displayPrice } from '../lib/offer.mjs';
+import sample from '../data/juniper.json';
+const steps = [
+  ['Open your private link', 'Look through the site we built for your business on your phone or computer.'],
+  ['Choose to keep it', 'Your preview has the scope and price. If you like it, you can check out online.'],
+  ['Get it ready to launch', 'Share your edits in writing and we’ll help connect the finished site to your domain.'],
+];
 ---
 
-<Offer offer={offer} />
+<Base
+  title="SiteBefore — See your new website before you buy it"
+  description="See a website built for your local business before you buy it. One fixed price, online checkout and a launch handoff."
+  canonical="https://www.sitebefore.com/"
+  image={`https://www.sitebefore.com${sample.hero}`}
+>
+  <a class="skip button" href="#main">Skip to content</a>
+  <header class="top">
+    <div class="wrap top-inner">
+      <Brand />
+      <nav aria-label="Main navigation"><a href="#how">How it works</a><a href="#pricing">Pricing</a></nav>
+      <a class="button outline nav-button" href="/sample/">View sample <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="wrap intro">
+      <div>
+        <p class="eyebrow">Websites for local businesses</p>
+        <h1>See it before<br /> <em>you buy it.</em></h1>
+      </div>
+      <p>We build a website around your business and send you a private preview. If you want to keep it, you can buy it online for one fixed price.</p>
+    </section>
+
+    <section class="wrap specimen" aria-labelledby="sample-title">
+      <a class="specimen-link" href="/sample/" aria-label="Explore the Juniper Motor Works sample website">
+        <div class="specimen-image">
+          <img src={sample.hero} width="1440" height="960" alt="" fetchpriority="high" />
+        </div>
+        <div class="specimen-info">
+          <div>
+            <p class="eyebrow">Sample website · Auto repair</p>
+            <h2 id="sample-title">Juniper Motor Works</h2>
+          </div>
+          <span class="specimen-action">Explore the sample <span aria-hidden="true">↗</span></span>
+        </div>
+      </a>
+    </section>
+
+    <section class="wrap process" id="how">
+      <h2>From preview to launch</h2>
+      <ol>
+        {steps.map(([heading, copy]) => <li><h3>{heading}</h3><p>{copy}</p></li>)}
+      </ol>
+    </section>
+
+    <section class="package" id="pricing">
+      <div class="wrap package-inner">
+        <div>
+          <p class="eyebrow">Launch package</p>
+          <h2>{displayPrice()}</h2>
+          <p>{displayPrice('CAD')} for Canadian businesses. One-time payment.</p>
+        </div>
+        <div>
+          <ul>{currentOffer.scope.map((item) => <li>{item}</li>)}</ul>
+          <p>Already have a private link? Open it to review your site and check out.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap footer">
+    <Brand />
+    <a href="/sample/">Sample site</a><a href="/agency/">Operator sign-in</a>
+  </footer>
+</Base>
+
+<style>
+  .top { border-bottom: 1px solid var(--line); }
+  .top-inner, .footer { display: flex; align-items: center; gap: 18px; }
+  .top-inner { min-height: 72px; }
+  .top nav { display: flex; flex: 1; justify-content: center; gap: clamp(14px, 4vw, 38px); }
+  .top nav a, .footer > a { font-size: 0.88rem; font-weight: 750; text-decoration: none; }
+  .top nav a { display: inline-flex; align-items: center; min-height: 44px; }
+  .top nav a:hover, .footer > a:hover { text-decoration: underline; }
+  .nav-button { min-height: 42px; font-size: 0.86rem; }
+  .intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.65fr);
+    align-items: end;
+    gap: 22px clamp(18px, 7vw, 112px);
+    padding-block: clamp(46px, 7vw, 95px) clamp(25px, 4vw, 48px);
+  }
+  .intro .eyebrow { margin-bottom: 18px; color: #6f4c3c; }
+  .intro h1 { font-size: clamp(3.5rem, 8.3vw, 8rem); letter-spacing: -0.082em; line-height: 0.83; }
+  .intro h1 em { font: italic 400 1.14em/0.88 var(--serif); color: #42604d; letter-spacing: -0.035em; }
+  .intro > p { max-width: 31ch; padding-bottom: 2px; font-size: clamp(1rem, 1.6vw, 1.22rem); line-height: 1.55; }
+  .specimen-link { display: block; background: #191b19; color: #f4f0e8; text-decoration: none; }
+  .specimen-image { background: #312720; overflow: hidden; }
+  .specimen-image img { aspect-ratio: 2.45; object-fit: cover; object-position: center 56%; }
+  .specimen-info { display: flex; justify-content: space-between; align-items: end; gap: 16px; padding: clamp(17px, 3vw, 34px); }
+  .specimen-info .eyebrow { color: #f4b798; }
+  .specimen-info h2 { font-size: clamp(1.75rem, 4vw, 3.25rem); margin-top: 7px; }
+  .specimen-action { display: inline-flex; min-height: 44px; align-items: center; gap: 9px; font-weight: 800; text-decoration: underline; text-underline-offset: 4px; }
+  .specimen-link:hover .specimen-action { color: #f4b798; }
+  .process { padding-block: clamp(52px, 8vw, 100px); }
+  .process h2 { font-size: clamp(2.25rem, 5.2vw, 4.5rem); }
+  .process ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(18px, 4vw, 42px); margin: 24px 0 0; padding-left: 0; list-style: none; }
+  .process li { border-top: 1px solid #bdb8aa; padding-top: 17px; }
+  .process h3 { font-size: 1.25rem; margin-bottom: 8px; }
+  .process li p { color: var(--muted); max-width: 35ch; }
+  .package { background: var(--green); color: var(--paper); }
+  .package-inner { padding-block: clamp(39px, 7vw, 80px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 40px; align-items: center; }
+  .package .eyebrow { color: #f4b798; }
+  .package h2 { font-size: clamp(2.9rem, 7vw, 6rem); margin-block: 4px 12px; }
+  .package ul { margin: 0 0 16px; padding-left: 1.2em; display: grid; gap: 6px; font-weight: 700; }
+  .package p { color: #f0e9dd; }
+  .footer { justify-content: space-between; padding-block: 23px; flex-wrap: wrap; }
+  @media (max-width: 700px) {
+    .top-inner { justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding-block: 10px 0; }
+    .top nav { order: 1; min-width: 100%; justify-content: flex-start; gap: 24px; }
+    .intro, .process ol, .package-inner { grid-template-columns: 1fr; }
+    .intro { padding-top: 38px; }
+    .specimen-image img { aspect-ratio: 1.62; }
+    .specimen-info { display: grid; align-items: start; gap: 5px; }
+  }
+</style>

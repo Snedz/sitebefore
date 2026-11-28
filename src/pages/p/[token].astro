@@ -1,0 +1,140 @@
+---
+import Base from '../../layouts/Base.astro';
+import StoryPreview from '../../components/StoryPreview.astro';
+import PricePanel from '../../components/PricePanel.astro';
+import { demoBusinessUrl } from '../../data/demo-prospect.mjs';
+import { checkoutMode, checkoutOrigin } from '../../lib/checkout.mjs';
+import { privateHeaders } from '../../lib/http.mjs';
+import { getStore, prospectSummary } from '../../lib/store.mjs';
+export const prerender = false;
+
+for (const [key, value] of Object.entries(privateHeaders)) Astro.response.headers.set(key, value);
+const token = Astro.params.token ?? '';
+let lead;
+if (/^[A-Za-z0-9_-]{32}$/.test(token)) {
+  try {
+    lead = await (await getStore()).publicLead(token);
+  } catch (err) {
+    Astro.response.status = err.status === 503 ? 503 : 500;
+  }
+}
+if (!lead && Astro.response.status === 200) Astro.response.status = 404;
+let mode = checkoutMode();
+if (mode === 'stripe-test') {
+  const origin = checkoutOrigin();
+  if (lead && origin && origin !== Astro.url.origin) {
+    const location = new URL('/p/' + token + '/' + Astro.url.search, origin).href;
+    return new Response(null, { status: 307, headers: {...privateHeaders, location} });
+  }
+  if (!origin) mode = null;
+}
+const status = Astro.url.searchParams.get('checkout');
+---
+
+{
+  lead ? (
+    <StoryPreview profile={prospectSummary(lead)} contactUrl={lead.data.businessUrl === demoBusinessUrl ? undefined : lead.data.businessUrl}>
+      <PricePanel currency={lead.data.currency} offer={lead.offer}>
+        {lead.paid_at ? (
+          <div class="notice stack" role="status">
+            <strong>
+              {lead.provider === 'demo' ? 'Simulated payment received' : 'Test payment received'}
+            </strong>
+            <p>
+              {lead.delivered_at
+                ? 'SiteBefore marked this order delivered.'
+                : 'Your order is in the launch queue. Keep this link for updates.'}
+            </p>
+            {lead.site_url && <a href={lead.site_url} rel="noreferrer">Open your published site</a>}
+            <small>
+              Order reference <code>{lead.receipt_id}</code>
+            </small>
+          </div>
+        ) : (
+          <div class="stack">
+            {status === 'returned' &&
+              (lead.checkout_id ? (
+                <p class="notice" role="status">
+                  Waiting for payment confirmation.{' '}
+                  <a href={`/p/${token}/?checkout=returned#offer`}>Refresh order status</a>.
+                </p>
+              ) : (
+                <p class="notice" role="status">
+                  No payment is confirmed. You can try checkout again below.
+                </p>
+              ))}
+            {status === 'cancelled' && (
+              <p class="notice" role="status">
+                You returned from checkout. You can resume whenever you’re ready.
+              </p>
+            )}
+            {mode ? (
+              <form class="stack" method="post" action="/api/checkout">
+                <input type="hidden" name="token" value={token} />
+                {mode === 'demo' && status === 'demo' ? (
+                  <div class="stack">
+                    <p class="notice">Local checkout simulation. No money will move.</p>
+                    <div class="actions">
+                      <button class="button" type="submit" name="action" value="simulate">
+                        Simulate test payment
+                      </button>
+                      <a href={`/p/${token}/?checkout=cancelled#offer`}>Cancel checkout</a>
+                    </div>
+                  </div>
+                ) : (
+                  <div class="stack">
+                    <button class="button" type="submit">
+                      {lead.attempt ? 'Resume test checkout' : 'Start test checkout'}
+                    </button>
+                    <small>Test checkout only. You won’t be charged.</small>
+                  </div>
+                )}
+              </form>
+            ) : (
+              <p class="notice">Checkout is unavailable for this review.</p>
+            )}
+          </div>
+        )}
+      </PricePanel>
+    </StoryPreview>
+  ) : (
+    <Base title="Preview unavailable · SiteBefore" privatePage>
+      <main class="wrap missing stack">
+        <h1>Preview unavailable</h1>
+        <>
+          <p>
+            {Astro.response.status >= 500
+              ? 'Try again in a moment.'
+              : 'Check the full link that came with your invitation.'}
+          </p>
+          <p>
+            <a href="/">Return to SiteBefore</a>
+          </p>
+        </>
+      </main>
+    </Base>
+  )
+}
+<style>
+  .notice {
+    padding: 12px;
+    border-radius: 6px;
+    background: #edf2e9;
+    color: var(--ink);
+  }
+  .notice code {
+    overflow-wrap: anywhere;
+  }
+  .missing {
+    padding-block: 75px;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  form button {
+    justify-self: start;
+  }
+</style>
