@@ -36,12 +36,13 @@ function evidenceUrl(value) {
 function valueAppearsInExcerpt(key, value, excerpt) {
   if (!urlFields.has(key)) return normalizeEvidenceText(excerpt).includes(normalizeEvidenceText(value));
   const expected = evidenceUrl(value);
-  return expected !== null && (excerpt.match(/https:\/\/[^\s"'`“”‘’<>()\[\]{}]+/gi) ?? []).some(token => {
-    const candidate = evidenceUrl(token);
-    if (candidate === expected) return true;
-    const suffix = candidate?.slice(expected.length);
-    return /^[.,;:!?]+$/.test(suffix ?? '') && candidate.slice(0, -suffix.length) === expected;
-  });
+  if (expected === null) return false;
+  for (const { index } of excerpt.matchAll(/https:\/\//gi)) {
+    const end = index + value.length;
+    if (evidenceUrl(excerpt.slice(index, end)) !== expected) continue;
+    if (/^(?:$|[\s"'`<>]|[.,;:!?)]+(?:$|[\s"'`]))/.test(excerpt.slice(end))) return true;
+  }
+  return false;
 }
 
 function duplicateKeys(raw) {

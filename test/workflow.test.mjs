@@ -95,7 +95,7 @@ test('URL evidence ignores scheme and host case but preserves the exact path and
   const excerpt = 'Captured URL: https://example.com/Listing?Ref=ABC';
   input.facts.maps_url = { value, excerpt, source, retrieved };
   assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
-  for (const suffix of ['.', ',', ')', ';', ':', '!', '?', '"', "'", '”).']) {
+  for (const suffix of ['.', ',', ')', ';', ':', '!', '?', '"', "'", '.)"']) {
     input.facts.maps_url.excerpt = excerpt + suffix + ' Next sentence.';
     assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
   }
@@ -116,7 +116,7 @@ test('URL evidence ignores scheme and host case but preserves the exact path and
   assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
 });
 
-test('URL evidence ends at compact JSON delimiters, brackets or sentence punctuation', () => {
+test('URL evidence finds exact matches at compact JSON delimiters or sentence punctuation', () => {
   const input = exportFixture();
   const value = 'https://x.com/a';
   for (const excerpt of [
@@ -124,14 +124,27 @@ test('URL evidence ends at compact JSON delimiters, brackets or sentence punctua
     "website='https://x.com/a',phone='469-687-5439'",
     'website=`https://x.com/a`,phone=469-687-5439',
     '<https://x.com/a>next',
-    '[https://x.com/a]next',
-    '{https://x.com/a}next',
-    '(https://x.com/a)next',
+    '(https://x.com/a) next',
     'The website is https://x.com/a. Call for details.',
   ]) {
     input.facts.website = { ...input.facts.maps_url, value, excerpt };
     assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)), excerpt);
   }
+  for (const suffix of ['[next]', '{next}', ')next', '/next', '?next=1', '&next=1', 'next']) {
+    input.facts.website.excerpt = value + suffix;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /website: the fact value does not appear in the excerpt/);
+  }
+});
+
+test('a Maps URL containing parentheses matches exactly but does not substantiate its prefix', () => {
+  const input = exportFixture();
+  const prefix = 'https://www.google.com/maps/place/Fixture';
+  const value = prefix + '(Downtown)/data?cid=111';
+  const excerpt = 'The listing is ' + value + '.';
+  input.facts.maps_url = { ...input.facts.maps_url, value, excerpt };
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  input.facts.maps_url.value = prefix;
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /maps_url: the fact value does not appear in the excerpt/);
 });
 
 test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
