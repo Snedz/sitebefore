@@ -48,6 +48,15 @@ test('different Google Maps cids import as separate businesses without tracking 
     normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=222' }).businessKey);
 });
 
+test('an explicit location and city must agree', () => {
+  const input = exportFixture();
+  input.facts.location = { ...input.facts.city };
+  delete input.facts.address;
+  assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  input.facts.city = { ...input.facts.city, value: 'Dallas', excerpt: 'Dallas' };
+  assert.throws(() => parseDossierExport(JSON.stringify(input)), /location, city: contradictory values for location/);
+});
+
 test('grounded snapshot facts preserve evidence and report all invalid or contradictory fields', () => {
   const clock = Date.parse('2026-11-28T12:00:00Z');
   const retrieved = '2026-11-01T15:45:00-05:00';

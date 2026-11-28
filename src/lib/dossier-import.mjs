@@ -98,6 +98,16 @@ export function parseDossierExport(raw, now = Date.now()) {
     const values = new Set(rows.map(({ row }) => key === 'phone' ? businessPhoneLink(row.value) : normalizeEvidenceText(row.value)));
     if (values.size > 1) issues.push(`${rows.map(({ label }) => label).join(', ')}: contradictory values for ${key}.`);
   }
+  const cities = groups.get('city') ?? [];
+  for (const { row, label } of groups.get('location') ?? []) {
+    if (row.field !== 'location') continue;
+    const parts = row.value.split(',').map(part => normalizeEvidenceText(part.trim()));
+    for (const city of cities) {
+      if (!parts.includes(normalizeEvidenceText(city.row.value))) {
+        issues.push(`${label}, ${city.label}: contradictory values for location.`);
+      }
+    }
+  }
   const facts = Object.entries(fields).flatMap(([field, keys]) => {
     const matches = keys.flatMap(key => evidence.filter(row => row.field === key));
     return (field === 'service' ? matches : matches.slice(0, 1)).map(row => ({ ...row, field }));
