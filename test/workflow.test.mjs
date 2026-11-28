@@ -90,6 +90,10 @@ test('URL evidence ignores scheme and host case but preserves the exact path and
   const excerpt = 'Captured URL: https://example.com/Listing?Ref=ABC';
   input.facts.maps_url = { value, excerpt, source, retrieved };
   assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  for (const suffix of ['.', ',', ')', ';', ':', '!', '?', '"', "'", '”).']) {
+    input.facts.maps_url.excerpt = excerpt + suffix + ' Next sentence.';
+    assert.doesNotThrow(() => parseDossierExport(JSON.stringify(input)));
+  }
   for (const changed of [
     'https://example.com/listing?Ref=ABC',
     'https://example.com/Listing?Ref=abc',
