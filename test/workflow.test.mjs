@@ -10,9 +10,72 @@ import { makeDemoProspect } from '../src/data/demo-prospect.mjs';
 import { normalizeProspect, checkFreshness, publicProfile } from '../src/lib/prospect.mjs';
 import { currentOffer, launchOffer } from '../src/lib/offer.mjs';
 import { checkoutMode, checkoutOrigin, failureFromEvent, paymentFromEvent, verifyWebhook } from '../src/lib/checkout.mjs';
-import { readForm } from '../src/lib/http.mjs';
+import { configuredOperators, readForm, verifyOperatorLogin } from '../src/lib/http.mjs';
 
 const { version: offerVersion, amount: price } = currentOffer;
+
+test('named credentials preserve the legacy account and throttle failures per address', t => {
+  const key = 'a'.repeat(32);
+  const legacy = 'b'.repeat(32);
+  assert.deepEqual([...configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key, SITEBEFORE_OPERATOR_KEY: legacy })],
+    [['a', key], ['operator', legacy]]);
+  const invalid = { status: 503, message: /unique operator names and distinct keys/ };
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',a:' + legacy }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key + ',b:' + key }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:' + key, SITEBEFORE_OPERATOR_KEY: key }), invalid);
+  assert.throws(() => configuredOperators({ SITEBEFORE_OPERATORS: 'a:short' }), invalid);
+  const original = process.env.SITEBEFORE_OPERATORS;
+  t.after(() => {
+    if (original === undefined) delete process.env.SITEBEFORE_OPERATORS;
+    else process.env.SITEBEFORE_OPERATORS = original;
+  });
+  process.env.SITEBEFORE_OPERATORS = 'a:' + key;
+  const now = Date.now();
+  for (let i = 0; i < 5; i++) {
+    assert.throws(() => verifyOperatorLogin(i % 2 ? 'unknown' : 'a', 'wrong', '192.0.2.1', now),
+      { status: 401, message: 'The operator name or key did not match.' });
+  }
+  assert.throws(() => verifyOperatorLogin('a', key, '192.0.2.1', now), { status: 429 });
+  assert.ok(verifyOperatorLogin('a', key, '192.0.2.2', now));
+  assert.ok(verifyOperatorLogin('a', key, '192.0.2.1', now + 15 * 60 * 1000));
+});
+
+test('operator sessions expire at the stored deadline and audit is limited to the latest 50 writes', async t => {
+  const db = await createStore({ url: ':memory:' });
+  t.after(() => db.close());
+  assert.deepEqual(await db.recentOperatorAudit(), []);
+  await db.createOperatorSession('expired-session', 'reviewer', 'fixture-key-hash', 100, 200);
+  assert.equal((await db.operatorSession('expired-session', 199)).operator, 'reviewer');
+  assert.equal(await db.operatorSession('expired-session', 200), undefined);
+  for (let i = 0; i < 50; i++) {
+    await db.createOperatorSession('session-' + i, 'operator-' + i, 'fixture-key-hash', 201, 300);
+  }
+  const entries = await db.recentOperatorAudit();
+  assert.equal(entries.length, 50);
+  assert.equal(entries[0].operator, 'operator-49');
+  assert.equal(entries.at(-1).operator, 'operator-0');
+  assert.ok(entries.every(entry => entry.action === 'login' && Number.isFinite(Date.parse(entry.occurred_at))));
+});
+
+test('a full throttle evicts the oldest address without sharing a lockout across new addresses', t => {
+  const key = 'c'.repeat(32);
+  const original = process.env.SITEBEFORE_OPERATORS;
+  t.after(() => {
+    if (original === undefined) delete process.env.SITEBEFORE_OPERATORS;
+    else process.env.SITEBEFORE_OPERATORS = original;
+  });
+  process.env.SITEBEFORE_OPERATORS = 'reviewer:' + key;
+  const now = Date.now();
+  const attempt = (address, supplied) => verifyOperatorLogin('reviewer', supplied, address, now);
+  const fail = address => assert.throws(() => attempt(address, 'wrong'), { status: 401 });
+  for (let i = 0; i < 5; i++) fail('192.0.2.20');
+  assert.throws(() => attempt('192.0.2.20', key), { status: 429 });
+  for (let i = 0; i < 9_999; i++) fail('2001:db8::' + (i + 1).toString(16));
+  for (let i = 0; i < 5; i++) fail('192.0.2.21');
+  assert.throws(() => attempt('192.0.2.21', key), { status: 429 });
+  assert.ok(attempt('192.0.2.22', key));
+  assert.ok(attempt('192.0.2.20', key));
+});
 
 test('checkout and published links can share one valid configured origin', () => {
   assert.equal(checkoutOrigin('https://preview.example.com/'), 'https://preview.example.com');

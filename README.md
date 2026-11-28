@@ -13,12 +13,12 @@ Use Node 22.23.4 or later. Keep the generated operator key for the current sessi
 
 ```sh
 npm ci
-export SITEBEFORE_OPERATOR_KEY="$(openssl rand -hex 32)"
+export SITEBEFORE_OPERATORS="reviewer:$(openssl rand -hex 32)"
 export SITEBEFORE_DEMO_CHECKOUT=1
 npm run dev
 ```
 
-Open `/agency/`, sign in with that key, and choose **Add fictional demo**. Review the evidence and open the internal draft. Approve the exact revision, open the share link, cancel and retry, then simulate a payment. To rehearse delivery, enter a fixture link such as `https://example.com/` as the published site URL and mark the order delivered. The buyer can revisit their link for the receipt, delivery status and published site. The local database lives under `.local/`.
+Open `/agency/`, sign in as `reviewer` with that key, and choose **Add fictional demo**. Review the evidence and open the internal draft. Approve the exact revision, open the share link, cancel and retry, then simulate a payment. To rehearse delivery, enter a fixture link such as `https://example.com/` as the published site URL and mark the order delivered. The buyer can revisit their link for the receipt, delivery status and published site. The local database lives under `.local/`.
 
 For a real dossier, paste JSON containing `currency` (`USD` or `CAD`), `businessUrl` (one stable HTTPS page or listing specific to this business), and `facts`. Each fact has a `field`, `value`, `source`, `excerpt` and `checked` (YYYY-MM-DD). Required fields are `name`, `location`, `trade`, `intro` and at least one `service`; `headline` and `story` are optional. Evidence must contain the quoted wording and be no more than 30 days old at approval. The operator checks that the source is genuine, applies to the business, and supports the claim in context. Remove unsupported claims and keep raw evidence inside Agency OS.
 
@@ -36,11 +36,14 @@ The Vercel build uses on-demand Astro routes for the workspace and preview while
 
 | Variable | Purpose |
 | --- | --- |
-| `SITEBEFORE_OPERATOR_KEY` | High-entropy, operator-only key (at least 32 characters). Rotating it invalidates operator sessions. |
+| `SITEBEFORE_OPERATORS` | Comma-separated `name:key` pairs. Use unique, case-sensitive names (letters, digits, hyphens or underscores, up to 64 characters) and distinct high-entropy keys of at least 32 characters, without commas or surrounding spaces. Malformed entries, duplicate names or a repeated key (including an active legacy account) disable operator access. |
+| `SITEBEFORE_OPERATOR_KEY` | Legacy key of at least 32 characters, for the account named `operator`. An explicitly configured `operator` takes precedence. |
 | `SITEBEFORE_DB_URL`, `SITEBEFORE_DB_TOKEN` | Authenticated libSQL database scoped to this review environment. The app initializes its pilot tables on first use. |
 | `SITEBEFORE_ORIGIN` | Exact HTTPS origin for buyer links and checkout callbacks. Use the fixed review hostname. |
 | `STRIPE_SECRET_KEY` | Stripe sandbox restricted key with Checkout Session permissions. The app also accepts a sandbox secret key. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for `/api/stripe-webhook` on the same sandbox account. Register `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`. |
+
+Operator sessions expire after one hour and are stored server-side. Sign-out revokes the active session. Removing an operator or rotating their key denies access to sessions bound to the previous configuration; do not reuse old keys. Old stateless cookies from before this change require signing in again. Agency OS displays the latest 50 successful operator actions and the approver on newly released previews. Failed sign-in throttling allows five failures per client address per 15 minutes, in memory per running instance; it is not a shared serverless rate limit.
 
 On a protected Vercel preview, the browser sign-in and the Stripe webhook are separate requests. Configure an authorized sandbox webhook URL that can reach `/api/stripe-webhook` on the review deployment. When the project uses [Vercel Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation#other-webhook-services), store the generated URL only in the sandbox webhook configuration and keep Stripe signature verification enabled.
 

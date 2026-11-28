@@ -19,6 +19,15 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS order_deliveries (
     prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS operator_sessions (
+    id TEXT PRIMARY KEY, operator TEXT NOT NULL, key_hash TEXT NOT NULL, expires_at INTEGER NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS operator_sessions_expiry ON operator_sessions(expires_at)',
+  `CREATE TABLE IF NOT EXISTS operator_audit (
+    id INTEGER PRIMARY KEY, operator TEXT NOT NULL, action TEXT NOT NULL,
+    prospect_id TEXT REFERENCES prospects(id), occurred_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS operator_audit_prospect ON operator_audit(prospect_id, action, id)',
 ];
 
 const now = () => new Date().toISOString();
@@ -48,6 +57,16 @@ export async function createStore(config, offer = currentOffer) {
   const db = createClient(config);
   try { await db.batch(schema, 'write'); } catch (err) { db.close(); throw err; }
   const execute = (sql, args = []) => db.execute({ sql, args });
+  const auditChange = (operator, action, prospectId = null, occurredAt = now()) => ({
+    sql: `INSERT INTO operator_audit (operator, action, prospect_id, occurred_at)
+      SELECT ?, ?, ?, ? WHERE changes() > 0`,
+    args: [operator, action, prospectId, occurredAt],
+  });
+  const writeAs = async (sql, args, operator, action, prospectId, occurredAt) => {
+    if (!operator) return execute(sql, args);
+    const [result] = await db.batch([{ sql, args }, auditChange(operator, action, prospectId, occurredAt)], 'write');
+    return result;
+  };
   const hydrate = row => {
     if (!row) return row;
     const { offer: approvedOffer, ...data } = JSON.parse(String(row.payload));
@@ -61,6 +80,34 @@ export async function createStore(config, offer = currentOffer) {
   };
   return {
     close: () => db.close(),
+    async operatorSession(id, time) {
+      const { rows } = await execute('SELECT operator, key_hash FROM operator_sessions WHERE id = ? AND expires_at > ?', [id, time]);
+      return rows[0];
+    },
+    async createOperatorSession(id, operator, keyHash, time, expires) {
+      await db.batch([
+        { sql: 'DELETE FROM operator_sessions WHERE expires_at <= ?', args: [time] },
+        { sql: 'INSERT INTO operator_sessions (id, operator, key_hash, expires_at) VALUES (?, ?, ?, ?)',
+          args: [id, operator, keyHash, expires] },
+        auditChange(operator, 'login'),
+      ], 'write');
+    },
+    async deleteOperatorSession(id, operator) {
+      await db.batch([
+        { sql: 'DELETE FROM operator_sessions WHERE id = ? AND operator = ?', args: [id, operator] },
+        auditChange(operator, 'logout'),
+      ], 'write');
+    },
+    async recentOperatorAudit() {
+      const { rows } = await execute(
+        'SELECT operator, action, prospect_id, occurred_at FROM operator_audit ORDER BY id DESC LIMIT 50');
+      return rows;
+    },
+    async approvedBy(id, approvedAt) {
+      const { rows } = await execute(`SELECT operator FROM operator_audit
+        WHERE prospect_id = ? AND action = 'release' AND occurred_at = ? ORDER BY id DESC LIMIT 1`, [id, approvedAt]);
+      return rows[0]?.operator;
+    },
     async list(page = 1) {
       const { rows } = await execute(`SELECT p.id, p.share_token, o.paid_at, o.delivered_at,
         (SELECT json_extract(f.value, '$.value') FROM json_each(p.payload, '$.facts') f
@@ -85,20 +132,20 @@ export async function createStore(config, offer = currentOffer) {
     find,
     publicLead: async token => /^[A-Za-z0-9_-]{32}$/.test(token) &&
       hydrate((await execute(select + ' WHERE p.share_token = ?', [token])).rows[0]),
-    async save(input, id, revision) {
+    async save(input, id, revision, operator) {
       const data = normalizeProspect(input);
       const payload = JSON.stringify(data);
       const key = data.businessKey;
       const leadId = id || randomUUID();
       const saved = id
-        ? await execute(`UPDATE OR IGNORE prospects SET business_key = ?, payload = ?, revision = revision + 1
-          WHERE id = ? AND revision = ? AND share_token IS NULL`, [key, payload, id, revision])
-        : await execute('INSERT OR IGNORE INTO prospects (id, business_key, payload, created_at) VALUES (?, ?, ?, ?)',
-          [leadId, key, payload, now()]);
+        ? await writeAs(`UPDATE OR IGNORE prospects SET business_key = ?, payload = ?, revision = revision + 1
+          WHERE id = ? AND revision = ? AND share_token IS NULL`, [key, payload, id, revision], operator, 'save', leadId)
+        : await writeAs('INSERT OR IGNORE INTO prospects (id, business_key, payload, created_at) VALUES (?, ?, ?, ?)',
+          [leadId, key, payload, now()], operator, 'save', leadId);
       if (!saved.rowsAffected) throw new WorkflowError('A duplicate, approved or changed prospect prevented this save. Reload before editing.', 409);
       return leadId;
     },
-    async release(id, revision, reviewedOfferVersion = offer.version) {
+    async release(id, revision, reviewedOfferVersion = offer.version, operator) {
       const lead = await find(id);
       if (!lead) throw new WorkflowError('Prospect not found.', 404);
       if (lead.share_token) return;
@@ -106,16 +153,17 @@ export async function createStore(config, offer = currentOffer) {
         throw new WorkflowError('The offer changed. Reload and review the new terms before approving.', 409);
       }
       checkFreshness(lead.data.facts);
-      const saved = await execute(`UPDATE prospects
+      const approvedAt = now();
+      const saved = await writeAs(`UPDATE prospects
         SET share_token = ?, approved_at = ?, payload = json_set(payload, '$.offer', json(?))
         WHERE id = ? AND share_token IS NULL AND revision = ?`,
-        [randomBytes(24).toString('base64url'), now(), JSON.stringify(offer), id, revision]);
+        [randomBytes(24).toString('base64url'), approvedAt, JSON.stringify(offer), id, revision], operator, 'release', id, approvedAt);
       if (!saved.rowsAffected) throw new WorkflowError('This prospect changed. Reload and review the evidence again.', 409);
     },
-    async revoke(id) {
-      const saved = await execute(`UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
+    async revoke(id, operator) {
+      const saved = await writeAs(`UPDATE prospects SET share_token = NULL, approved_at = NULL, revision = revision + 1,
           payload = json_remove(payload, '$.offer')
-        WHERE id = ? AND share_token IS NOT NULL AND attempt IS NULL`, [id]);
+        WHERE id = ? AND share_token IS NOT NULL AND attempt IS NULL`, [id], operator, 'revoke', id);
       if (!saved.rowsAffected) throw new WorkflowError('A preview with a checkout attempt cannot be revoked here.', 409);
     },
     async reserveAttempt(id, token) {
@@ -151,9 +199,9 @@ export async function createStore(config, offer = currentOffer) {
       const paid = await find(id);
       return paid?.receipt_id === sessionId && paid.provider === provider && paid.attempt === attempt;
     },
-    async markDelivered(id, siteUrl) {
+    async markDelivered(id, siteUrl, operator) {
       const url = deliveryUrl(siteUrl);
-      const [, saved, order] = await db.batch([
+      const [, saved, , order] = await db.batch([
         {
           sql: `INSERT INTO order_deliveries (prospect_id, site_url)
             SELECT prospect_id, ? FROM orders WHERE prospect_id = ?
@@ -162,12 +210,15 @@ export async function createStore(config, offer = currentOffer) {
         },
         {
           sql: `UPDATE orders SET delivered_at = COALESCE(delivered_at, ?) WHERE prospect_id = ?
+            AND (delivered_at IS NULL OR changes() > 0)
             AND EXISTS (SELECT 1 FROM order_deliveries WHERE prospect_id = orders.prospect_id AND site_url = ?)`,
           args: [now(), id, url],
         },
-        { sql: 'SELECT 1 FROM orders WHERE prospect_id = ?', args: [id] },
+        operator ? auditChange(operator, 'delivered', id) : { sql: 'SELECT 1', args: [] },
+        { sql: `SELECT d.site_url FROM orders o LEFT JOIN order_deliveries d ON d.prospect_id = o.prospect_id
+          WHERE o.prospect_id = ?`, args: [id] },
       ], 'write');
-      if (saved.rowsAffected) return;
+      if (saved.rowsAffected || order.rows[0]?.site_url === url) return;
       if (!order.rows.length) throw new WorkflowError('An order must be paid before delivery.', 409);
       throw new WorkflowError('A different site URL has already been recorded for this order.', 409);
     },
