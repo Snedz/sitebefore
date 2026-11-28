@@ -81,14 +81,19 @@ export function normalizeProspect(input) {
   if (business.protocol !== 'https:' || business.username || business.password) {
     throw new WorkflowError('Add an HTTPS business or booking URL without credentials.');
   }
+  return { currency: input.currency, businessUrl: business.href, businessKey: businessKeys(business).key, facts };
+}
+
+export function businessKeys(business) {
   const host = business.hostname.replace(/^www\./, '');
   const path = business.pathname.replace(/\/+$/, '');
   const isMapsListing = /^maps\.google\.(com|ca)$/.test(host) ||
     (/^google\.(com|ca)$/.test(host) && /^\/maps(?:\/|$)/.test(path));
   const identityParam = isMapsListing && ['cid', 'place_id', 'q'].find(param => business.searchParams.get(param));
-  const businessKey = host + path + (identityParam
+  const legacy = host + path;
+  const key = legacy + (identityParam
     ? '?' + new URLSearchParams([[identityParam, business.searchParams.get(identityParam)]]) : '');
-  return { currency: input.currency, businessUrl: business.href, businessKey, facts };
+  return { key, legacy };
 }
 
 export function checkFreshness(facts, now = Date.now()) {

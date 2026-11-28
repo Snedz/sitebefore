@@ -48,6 +48,31 @@ test('different Google Maps cids import as separate businesses without tracking 
     normalizeProspect({ ...prospect, businessUrl: 'https://example.com/maps?cid=222' }).businessKey);
 });
 
+test('imports honor released prospects and drafts stored under legacy Maps keys', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'sitebefore-legacy-import-'));
+  const url = 'file:' + join(directory, 'orders.db');
+  const db = await createStore({ url });
+  const sql = createClient({ url });
+  t.after(() => { sql.close(); db.close(); rmSync(directory, { recursive: true, force: true }); });
+  const fixture = (path, cid) => {
+    const input = exportFixture();
+    const value = `https://www.google.com${path}${cid ? '?cid=' + cid : ''}`;
+    input.facts.maps_url = { ...input.facts.maps_url, value, excerpt: value };
+    return JSON.stringify(input);
+  };
+  const old = await db.save(parseDossierExport(fixture('/maps', 111)).dossier);
+  await sql.execute({ sql: 'UPDATE prospects SET business_key = ? WHERE id = ?', args: ['google.com/maps', old] });
+  await db.release(old, 1);
+  await assert.rejects(db.importDossier(fixture('/maps', 111)), { status: 409 });
+  assert.equal((await db.list()).leads.length, 1);
+  assert.notEqual(await db.importDossier(fixture('/maps', 222)), old);
+
+  const draft = await db.save(parseDossierExport(fixture('/maps/place/fixture')).dossier);
+  assert.equal(await db.importDossier(fixture('/maps/place/fixture', 333)), draft);
+  assert.equal((await db.find(draft)).business_key, 'google.com/maps/place/fixture?cid=333');
+  assert.equal((await db.list()).leads.length, 3);
+});
+
 test('an explicit location and city must agree', () => {
   const input = exportFixture();
   input.facts.location = { ...input.facts.city };

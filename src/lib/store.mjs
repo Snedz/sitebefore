@@ -2,7 +2,7 @@ import { createClient } from '@libsql/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { normalizeProspect, checkFreshness, publicProfile, WorkflowError } from './prospect.mjs';
+import { businessKeys, normalizeProspect, checkFreshness, publicProfile, WorkflowError } from './prospect.mjs';
 import { currentOffer, launchOffer } from './offer.mjs';
 import { parseDossierExport } from './dossier-import.mjs';
 
@@ -107,14 +107,33 @@ export async function createStore(config, offer = currentOffer) {
     async importDossier(raw) {
       const { dossier, evidence, sourceHash } = parseDossierExport(raw);
       const { businessKey } = dossier;
+      const listing = new URL(dossier.businessUrl);
+      const { legacy } = businessKeys(listing);
+      let legacyUrl = null;
+      if (businessKey !== legacy) {
+        const { rows } = await execute("SELECT json_extract(payload, '$.businessUrl') AS url FROM prospects WHERE business_key = ?", [legacy]);
+        if (rows[0]?.url) {
+          const saved = new URL(rows[0].url);
+          const cid = listing.searchParams.get('cid');
+          const savedCid = saved.searchParams.get('cid');
+          const savedKey = businessKeys(saved).key;
+          if (cid ? !savedCid || cid === savedCid : savedKey === legacy || savedKey === businessKey) {
+            legacyUrl = rows[0].url;
+          }
+        }
+      }
       const importedAt = now();
       const [, , result] = await db.batch([
         {
           sql: `INSERT INTO prospects (id, business_key, payload, created_at)
-            SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dossier_imports WHERE source_hash = ?)
-            ON CONFLICT(business_key) DO UPDATE SET payload = excluded.payload, revision = prospects.revision + 1
+            SELECT COALESCE((
+              SELECT id FROM prospects WHERE business_key = ? AND json_extract(payload, '$.businessUrl') = ?
+                AND NOT EXISTS (SELECT 1 FROM prospects WHERE business_key = ?)
+            ), ?), ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dossier_imports WHERE source_hash = ?)
+            ON CONFLICT DO UPDATE SET business_key = excluded.business_key,
+              payload = excluded.payload, revision = prospects.revision + 1
             WHERE prospects.share_token IS NULL AND NOT EXISTS (SELECT 1 FROM orders WHERE prospect_id = prospects.id)`,
-          args: [randomUUID(), businessKey, JSON.stringify(dossier), importedAt, sourceHash],
+          args: [legacy, legacyUrl, businessKey, randomUUID(), businessKey, JSON.stringify(dossier), importedAt, sourceHash],
         },
         {
           sql: `INSERT INTO dossier_imports (id, source_hash, prospect_id, imported_at, evidence)
