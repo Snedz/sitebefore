@@ -19,6 +19,13 @@ const schema = [
   `CREATE TABLE IF NOT EXISTS order_deliveries (
     prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), site_url TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS order_buyer_contacts (
+    prospect_id TEXT PRIMARY KEY REFERENCES orders(prospect_id), email TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS order_emails (
+    prospect_id TEXT NOT NULL REFERENCES orders(prospect_id),
+    kind TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY (prospect_id, kind)
+  )`,
 ];
 
 const now = () => new Date().toISOString();
@@ -137,16 +144,20 @@ export async function createStore(config, offer = currentOffer) {
       if (matchesCheckout(lead, event)) await resetExpiredSession(event.id, event.attempt, event.sessionId);
     },
     async pay(event) {
-      const { id, attempt, sessionId, amount, currency, provider } = event;
+      const { id, attempt, sessionId, amount, currency, provider, buyerEmail } = event;
       // The offer is immutable once an attempt starts. The insert still checks
       // the attempt in case Stripe expired it while the webhook was in flight.
       if (!matchesCheckout(await find(id), event)) return false;
-      const inserted = await execute(`INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
+      const order = { sql: `INSERT INTO orders (prospect_id, checkout_id, amount, currency, provider, paid_at)
         SELECT id, ?, ?, ?, ?, ? FROM prospects
         WHERE id = ? AND attempt = ? AND share_token IS NOT NULL
           AND json_extract(payload, '$.currency') = ? AND (checkout_id = ? OR checkout_id IS NULL)
         ON CONFLICT(prospect_id) DO NOTHING`,
-        [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId]);
+        args: [sessionId, amount, currency, provider, now(), id, attempt, currency, sessionId] };
+      const [inserted] = buyerEmail ? await db.batch([order, {
+        sql: 'INSERT INTO order_buyer_contacts (prospect_id, email) SELECT ?, ? WHERE changes() > 0',
+        args: [id, buyerEmail],
+      }], 'write') : [await db.execute(order)];
       if (inserted.rowsAffected) return true;
       const paid = await find(id);
       return paid?.receipt_id === sessionId && paid.provider === provider && paid.attempt === attempt;
@@ -170,6 +181,24 @@ export async function createStore(config, offer = currentOffer) {
       if (saved.rowsAffected) return;
       if (!order.rows.length) throw new WorkflowError('An order must be paid before delivery.', 409);
       throw new WorkflowError('A different site URL has already been recorded for this order.', 409);
+    },
+    async buyerEmail(id) {
+      const { rows } = await execute('SELECT email FROM order_buyer_contacts WHERE prospect_id = ?', [id]);
+      return rows[0]?.email;
+    },
+    async claimOrderEmail(id, kind) {
+      const { rowsAffected } = await execute(`INSERT INTO order_emails (prospect_id, kind, status)
+        SELECT prospect_id, ?, 'sending' FROM orders WHERE prospect_id = ? AND provider = 'stripe-test'
+        ON CONFLICT(prospect_id, kind) DO NOTHING`, [kind, id]);
+      return rowsAffected > 0;
+    },
+    async finishOrderEmail(id, kind, status) {
+      await execute(`UPDATE order_emails SET status = ? WHERE prospect_id = ? AND kind = ? AND status = 'sending'`,
+        [status, id, kind]);
+    },
+    async orderEmailStatuses(id) {
+      const { rows } = await execute('SELECT kind, status FROM order_emails WHERE prospect_id = ?', [id]);
+      return Object.fromEntries(rows.map(row => [row.kind, row.status]));
     },
   };
 }

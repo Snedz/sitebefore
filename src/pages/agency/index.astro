@@ -15,6 +15,7 @@ const page = agencyPage(Astro.url.searchParams.get('page'));
 const prospectAction = '/api/agency' + (page > 1 ? '?page=' + page : '');
 let leads = [],
   selected,
+  emailStatuses,
   counts,
   hasNext = false,
   showDemo = false,
@@ -32,6 +33,7 @@ if (operator) {
     ({ leads, hasNext } = list);
     counts = totals;
     selected = lead;
+    if (lead?.paid_at) emailStatuses = await store.orderEmailStatuses(lead.id);
     showDemo = !demoExists;
   } catch {
     unavailable = true;
@@ -45,6 +47,14 @@ const stats = [
   ['Delivered', counts?.delivered],
 ];
 const name = selected && prospectSummary(selected).name;
+const emailLabels = {
+  sent: 'Sent',
+  sending: 'Send not yet confirmed',
+  failed: 'Failed',
+  not_configured: 'Not sent (email not configured)',
+  no_address: 'Not sent (no buyer email)',
+  no_link: 'Not sent (link unavailable)',
+};
 const previewPath = selected?.share_token && '/p/' + selected.share_token + '/';
 const previewURL = previewPath && new URL(previewPath, checkoutOrigin() ?? Astro.url.origin).href;
 const pitchFact =
@@ -249,6 +259,11 @@ function stage(lead) {
                         </p>
                         <small>
                           Order reference <code>{selected.receipt_id}</code>
+                        </small>
+                        <small>
+                          Receipt email: {selected.provider === 'demo' ? 'Skipped for simulation' : emailLabels[emailStatuses?.receipt] ?? 'Not recorded'}
+                          <br />
+                          Delivery email: {selected.provider === 'demo' ? 'Skipped for simulation' : emailLabels[emailStatuses?.delivery] ?? (selected.delivered_at ? 'Not recorded' : 'Awaiting delivery')}
                         </small>
                         {selected.site_url ? (
                           <a href={selected.site_url} rel="noreferrer">Open published site</a>
