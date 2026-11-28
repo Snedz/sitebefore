@@ -38,9 +38,10 @@ function valueAppearsInExcerpt(key, value, excerpt) {
   const expected = evidenceUrl(value);
   if (expected === null) return false;
   for (const { index } of excerpt.matchAll(/https:\/\//gi)) {
+    if (index > 0 && !/[\s"'`“”‘’(\[<>]/.test(excerpt[index - 1])) continue;
     const end = index + value.length;
     if (evidenceUrl(excerpt.slice(index, end)) !== expected) continue;
-    if (/^(?:$|[\s"'`<>]|[.,;:!?)]+(?:$|[\s"'`]))/.test(excerpt.slice(end))) return true;
+    if (/^(?:$|[\s"'`“”‘’\]<>]|[.,;:!?)]+(?:$|[\s"'`“”‘’\]]))/.test(excerpt.slice(end))) return true;
   }
   return false;
 }

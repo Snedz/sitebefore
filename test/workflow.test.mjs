@@ -125,6 +125,10 @@ test('URL evidence finds exact matches at compact JSON delimiters or sentence pu
     'website=`https://x.com/a`,phone=469-687-5439',
     '<https://x.com/a>next',
     '(https://x.com/a) next',
+    '“https://x.com/a”',
+    '‘https://x.com/a.’',
+    '[https://x.com/a]',
+    '[https://x.com/a.]',
     'The website is https://x.com/a. Call for details.',
   ]) {
     input.facts.website = { ...input.facts.maps_url, value, excerpt };
@@ -132,6 +136,10 @@ test('URL evidence finds exact matches at compact JSON delimiters or sentence pu
   }
   for (const suffix of ['[next]', '{next}', ')next', '/next', '?next=1', '&next=1', 'next']) {
     input.facts.website.excerpt = value + suffix;
+    assert.throws(() => parseDossierExport(JSON.stringify(input)), /website: the fact value does not appear in the excerpt/);
+  }
+  for (const prefix of ['https://referrer.example/?ref=', 'https://referrer.example/', 'x&', 'x']) {
+    input.facts.website.excerpt = prefix + value;
     assert.throws(() => parseDossierExport(JSON.stringify(input)), /website: the fact value does not appear in the excerpt/);
   }
 });
